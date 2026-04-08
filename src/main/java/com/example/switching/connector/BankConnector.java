@@ -1,9 +1,9 @@
 package com.example.switching.connector;
 
-import com.example.switching.dto.BankDispatchResult;
-import com.example.switching.dto.DispatchTransferCommand;
+import com.example.switching.outbox.dto.BankDispatchResult;
+import com.example.switching.outbox.dto.DispatchTransferCommand;
 
 public interface BankConnector {
-    boolean supports(String connectorName);
+
     BankDispatchResult dispatch(DispatchTransferCommand command);
 }

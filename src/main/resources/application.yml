@@ -7,7 +7,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
@@ -18,16 +18,13 @@ spring:
     locations: classpath:db/migration
 
 server:
-  port: 8081
-
-
+  port: 8080
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
-
 
 switching:
   outbox:
