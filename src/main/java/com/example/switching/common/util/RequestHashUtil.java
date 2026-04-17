@@ -2,44 +2,39 @@ package com.example.switching.common.util;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 
-import org.springframework.stereotype.Component;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-import com.example.switching.transfer.dto.CreateTransferRequest;
+public final class RequestHashUtil {
 
-@Component
-public class RequestHashUtil {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    public String hash(CreateTransferRequest request) {
-        String raw = String.join("|",
-                safe(request.getSourceBank()),
-                safe(request.getDestinationBank()),
-                safe(request.getDebtorAccount()),
-                safe(request.getCreditorAccount()),
-                request.getAmount() == null ? "" : request.getAmount().toPlainString(),
-                safe(request.getCurrency()),
-                safe(request.getReference()),
-                safe(request.getIdempotencyKey())
-        );
-        return sha256(raw);
+    private RequestHashUtil() {
     }
 
-    private String safe(String value) {
-        return value == null ? "" : value.trim();
-    }
-
-    private String sha256(String input) {
+    public static String sha256(String input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashBytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder();
-            for (byte b : hashBytes) {
-                builder.append(String.format("%02x", b));
-            }
-            return builder.toString();
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("Unable to hash request", ex);
+            byte[] encodedHash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            return toHex(encodedHash);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Unable to hash input", ex);
         }
+    }
+
+    public static String sha256(Object payload) {
+        try {
+            return sha256(OBJECT_MAPPER.writeValueAsString(payload));
+        } catch (Exception ex) {
+            throw new IllegalStateException("Unable to hash request payload", ex);
+        }
+    }
+
+    private static String toHex(byte[] bytes) {
+        StringBuilder builder = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            builder.append(String.format("%02x", value));
+        }
+        return builder.toString();
     }
 }

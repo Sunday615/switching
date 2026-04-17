@@ -79,4 +79,14 @@ public class CreateTransferRequest {
     public void setIdempotencyKey(String idempotencyKey) {
         this.idempotencyKey = idempotencyKey;
     }
+
+    private String inquiryRef;
+
+    public String getInquiryRef() {
+        return inquiryRef;
+    }
+
+    public void setInquiryRef(String inquiryRef) {
+        this.inquiryRef = inquiryRef;
+    }
 }
