@@ -29,7 +29,7 @@ public class OutboxEventEntity {
     private String messageType;
 
     @Lob
-    @Column(name = "payload")
+    @Column(name = "payload", columnDefinition = "LONGTEXT")
     private String payload;
 
     @Enumerated(EnumType.STRING)

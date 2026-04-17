@@ -1,20 +1,40 @@
 package com.example.switching.outbox.dto;
 
+import java.math.BigDecimal;
+
 public class DispatchTransferCommand {
 
     private String transferRef;
     private String sourceBank;
+    private String debtorAccount;
     private String destinationBank;
-    private String payload;
+    private String creditorAccount;
+    private BigDecimal amount;
+    private String currency;
+    private String connectorName;
+    private String routeCode;
 
     public DispatchTransferCommand() {
     }
 
-    public DispatchTransferCommand(String transferRef, String sourceBank, String destinationBank, String payload) {
+    public DispatchTransferCommand(String transferRef,
+                                   String sourceBank,
+                                   String debtorAccount,
+                                   String destinationBank,
+                                   String creditorAccount,
+                                   BigDecimal amount,
+                                   String currency,
+                                   String connectorName,
+                                   String routeCode) {
         this.transferRef = transferRef;
         this.sourceBank = sourceBank;
+        this.debtorAccount = debtorAccount;
         this.destinationBank = destinationBank;
-        this.payload = payload;
+        this.creditorAccount = creditorAccount;
+        this.amount = amount;
+        this.currency = currency;
+        this.connectorName = connectorName;
+        this.routeCode = routeCode;
     }
 
     public String getTransferRef() {
@@ -33,6 +53,14 @@ public class DispatchTransferCommand {
         this.sourceBank = sourceBank;
     }
 
+    public String getDebtorAccount() {
+        return debtorAccount;
+    }
+
+    public void setDebtorAccount(String debtorAccount) {
+        this.debtorAccount = debtorAccount;
+    }
+
     public String getDestinationBank() {
         return destinationBank;
     }
@@ -41,11 +69,43 @@ public class DispatchTransferCommand {
         this.destinationBank = destinationBank;
     }
 
-    public String getPayload() {
-        return payload;
+    public String getCreditorAccount() {
+        return creditorAccount;
     }
 
-    public void setPayload(String payload) {
-        this.payload = payload;
+    public void setCreditorAccount(String creditorAccount) {
+        this.creditorAccount = creditorAccount;
+    }
+
+    public BigDecimal getAmount() {
+        return amount;
+    }
+
+    public void setAmount(BigDecimal amount) {
+        this.amount = amount;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public void setCurrency(String currency) {
+        this.currency = currency;
+    }
+
+    public String getConnectorName() {
+        return connectorName;
+    }
+
+    public void setConnectorName(String connectorName) {
+        this.connectorName = connectorName;
+    }
+
+    public String getRouteCode() {
+        return routeCode;
+    }
+
+    public void setRouteCode(String routeCode) {
+        this.routeCode = routeCode;
     }
 }

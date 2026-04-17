@@ -241,4 +241,15 @@ public class TransferEntity {
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
     }
+
+    @Column(name = "inquiry_ref")
+    private String inquiryRef;
+
+    public String getInquiryRef() {
+        return inquiryRef;
+    }
+
+    public void setInquiryRef(String inquiryRef) {
+        this.inquiryRef = inquiryRef;
+    }
 }

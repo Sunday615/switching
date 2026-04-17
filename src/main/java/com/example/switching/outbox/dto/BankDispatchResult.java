@@ -3,47 +3,91 @@ package com.example.switching.outbox.dto;
 public class BankDispatchResult {
 
     private boolean success;
-    private String bankReference;
-    private String message;
+    private String externalReference;
+    private String reference;
+    private String errorCode;
+    private String errorMessage;
 
     public BankDispatchResult() {
     }
 
-    public BankDispatchResult(boolean success, String bankReference, String message) {
+    public BankDispatchResult(boolean success,
+                              String externalReference,
+                              String reference,
+                              String errorCode,
+                              String errorMessage) {
         this.success = success;
-        this.bankReference = bankReference;
-        this.message = message;
+        this.externalReference = externalReference;
+        this.reference = reference;
+        this.errorCode = errorCode;
+        this.errorMessage = errorMessage;
     }
 
-    public static BankDispatchResult success(String bankReference, String message) {
-        return new BankDispatchResult(true, bankReference, message);
+    public static BankDispatchResult success(String externalReference, String reference) {
+        return new BankDispatchResult(true, externalReference, reference, null, null);
     }
 
-    public static BankDispatchResult failure(String message) {
-        return new BankDispatchResult(false, null, message);
+    public static BankDispatchResult failed(String errorCode, String errorMessage) {
+        return new BankDispatchResult(false, null, null, errorCode, errorMessage);
     }
 
     public boolean isSuccess() {
         return success;
     }
 
+    public boolean success() {
+        return success;
+    }
+
+    public String getExternalReference() {
+        return externalReference;
+    }
+
+    public String externalReference() {
+        return externalReference;
+    }
+
+    public String getReference() {
+        return reference;
+    }
+
+    public String reference() {
+        return reference;
+    }
+
+    public String getErrorCode() {
+        return errorCode;
+    }
+
+    public String errorCode() {
+        return errorCode;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public String errorMessage() {
+        return errorMessage;
+    }
+
     public void setSuccess(boolean success) {
         this.success = success;
     }
 
-    public String getBankReference() {
-        return bankReference;
+    public void setExternalReference(String externalReference) {
+        this.externalReference = externalReference;
     }
 
-    public void setBankReference(String bankReference) {
-        this.bankReference = bankReference;
+    public void setReference(String reference) {
+        this.reference = reference;
     }
 
-    public String getMessage() {
-        return message;
+    public void setErrorCode(String errorCode) {
+        this.errorCode = errorCode;
     }
 
-    public void setMessage(String message) {
-        this.message = message;
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
     }
 }
