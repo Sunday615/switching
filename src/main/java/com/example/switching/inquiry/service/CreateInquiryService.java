@@ -2,7 +2,9 @@ package com.example.switching.inquiry.service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -34,7 +36,13 @@ public class CreateInquiryService {
 
     @Transactional
     public CreateInquiryResponse create(CreateInquiryRequest request) {
-        auditLogService.log("INQUIRY_REQUEST_RECEIVED", "INQUIRY", null, "API", request);
+        auditLogService.log(
+                "INQUIRY_REQUEST_RECEIVED",
+                "INQUIRY",
+                null,
+                "API",
+                request
+        );
 
         try {
             String inquiryRef = generateInquiryRef();
@@ -72,7 +80,26 @@ public class CreateInquiryService {
             saveHistory(inquiryRef, InquiryStatus.RECEIVED.name(), null, now);
             saveHistory(inquiryRef, status.name(), eligibleForTransfer ? null : "INQUIRY_NOT_ELIGIBLE", now);
 
-            auditLogService.log("INQUIRY_RESPONDED", "INQUIRY", inquiryRef, "API", inquiry);
+            Map<String, Object> auditPayload = new LinkedHashMap<>();
+            auditPayload.put("inquiryRef", inquiryRef);
+            auditPayload.put("status", status.name());
+            auditPayload.put("sourceBank", request.getSourceBank());
+            auditPayload.put("destinationBank", request.getDestinationBank());
+            auditPayload.put("creditorAccount", request.getCreditorAccount());
+            auditPayload.put("amount", request.getAmount());
+            auditPayload.put("currency", request.getCurrency());
+            auditPayload.put("accountFound", accountFound);
+            auditPayload.put("bankAvailable", bankAvailable);
+            auditPayload.put("eligibleForTransfer", eligibleForTransfer);
+            auditPayload.put("destinationAccountName", destinationAccountName);
+
+            auditLogService.log(
+                    "INQUIRY_RESPONDED",
+                    "INQUIRY",
+                    inquiryRef,
+                    "API",
+                    auditPayload
+            );
 
             return new CreateInquiryResponse(
                     inquiryRef,
@@ -84,7 +111,13 @@ public class CreateInquiryService {
                     eligibleForTransfer ? "Inquiry completed" : "Inquiry completed with non-eligible result"
             );
         } catch (Exception ex) {
-            auditLogService.logError("INQUIRY_FAILED", "INQUIRY", null, "API", ex);
+            auditLogService.logError(
+                    "INQUIRY_FAILED",
+                    "INQUIRY",
+                    null,
+                    "API",
+                    ex
+            );
             throw ex;
         }
     }
