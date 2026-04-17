@@ -1,5 +1,6 @@
 package com.example.switching.inquiry.service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,35 +31,71 @@ public class InquiryLookupService {
     }
 
     public InquiryResponse getByInquiryRef(String inquiryRef) {
-        auditLogService.log("INQUIRY_LOOKUP_REQUESTED", "INQUIRY", inquiryRef, "API", Map.of("inquiryRef", inquiryRef));
+        auditLogService.log(
+                "INQUIRY_LOOKUP_REQUESTED",
+                "INQUIRY",
+                inquiryRef,
+                "API",
+                Map.of("inquiryRef", inquiryRef)
+        );
 
-        InquiryEntity inquiry = inquiryRepository.findByInquiryRef(inquiryRef)
-                .orElseThrow(() -> new InquiryNotFoundException("Inquiry not found: " + inquiryRef));
+        try {
+            InquiryEntity inquiry = inquiryRepository.findByInquiryRef(inquiryRef)
+                    .orElseThrow(() -> new InquiryNotFoundException("Inquiry not found: " + inquiryRef));
 
-        List<InquiryStatusHistoryEntity> historyEntities =
-                inquiryStatusHistoryRepository.findByInquiryRefOrderByCreatedAtAsc(inquiryRef);
+            List<InquiryStatusHistoryEntity> historyEntities =
+                    inquiryStatusHistoryRepository.findByInquiryRefOrderByCreatedAtAsc(inquiryRef);
 
-        List<InquiryStatusHistoryItemResponse> history = historyEntities.stream()
-                .map(item -> new InquiryStatusHistoryItemResponse(
-                        item.getStatus(),
-                        item.getReasonCode(),
-                        item.getCreatedAt() == null ? null : item.getCreatedAt().toString()
-                ))
-                .toList();
+            List<InquiryStatusHistoryItemResponse> history = historyEntities.stream()
+                    .map(item -> new InquiryStatusHistoryItemResponse(
+                            item.getStatus(),
+                            item.getReasonCode(),
+                            item.getCreatedAt() == null ? null : item.getCreatedAt().toString()
+                    ))
+                    .toList();
 
-        InquiryResponse response = new InquiryResponse();
-        response.setInquiryRef(inquiry.getInquiryRef());
-        response.setStatus(inquiry.getStatus() == null ? null : inquiry.getStatus().name());
-        response.setSourceBank(inquiry.getSourceBank());
-        response.setDestinationBank(inquiry.getDestinationBank());
-        response.setCreditorAccount(inquiry.getCreditorAccount());
-        response.setDestinationAccountName(inquiry.getDestinationAccountName());
-        response.setAccountFound(inquiry.getAccountFound());
-        response.setBankAvailable(inquiry.getBankAvailable());
-        response.setEligibleForTransfer(inquiry.getEligibleForTransfer());
-        response.setHistory(history);
+            InquiryResponse response = new InquiryResponse();
+            response.setInquiryRef(inquiry.getInquiryRef());
+            response.setStatus(inquiry.getStatus() == null ? null : inquiry.getStatus().name());
+            response.setSourceBank(inquiry.getSourceBank());
+            response.setDestinationBank(inquiry.getDestinationBank());
+            response.setCreditorAccount(inquiry.getCreditorAccount());
+            response.setDestinationAccountName(inquiry.getDestinationAccountName());
+            response.setAccountFound(inquiry.getAccountFound());
+            response.setBankAvailable(inquiry.getBankAvailable());
+            response.setEligibleForTransfer(inquiry.getEligibleForTransfer());
+            response.setHistory(history);
 
-        auditLogService.log("INQUIRY_LOOKUP_RESPONDED", "INQUIRY", inquiryRef, "API", response);
-        return response;
+            Map<String, Object> auditPayload = new LinkedHashMap<>();
+            auditPayload.put("inquiryRef", response.getInquiryRef());
+            auditPayload.put("status", response.getStatus());
+            auditPayload.put("sourceBank", response.getSourceBank());
+            auditPayload.put("destinationBank", response.getDestinationBank());
+            auditPayload.put("creditorAccount", response.getCreditorAccount());
+            auditPayload.put("accountFound", response.getAccountFound());
+            auditPayload.put("bankAvailable", response.getBankAvailable());
+            auditPayload.put("eligibleForTransfer", response.getEligibleForTransfer());
+            auditPayload.put("historySize", history.size());
+
+            auditLogService.log(
+                    "INQUIRY_LOOKUP_RESPONDED",
+                    "INQUIRY",
+                    inquiryRef,
+                    "API",
+                    auditPayload
+            );
+
+            return response;
+
+        } catch (Exception ex) {
+            auditLogService.logError(
+                    "INQUIRY_LOOKUP_FAILED",
+                    "INQUIRY",
+                    inquiryRef,
+                    "API",
+                    ex
+            );
+            throw ex;
+        }
     }
 }
