@@ -1,0 +1,40 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: switching-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: REMOVED
+      MYSQL_DATABASE: switching_db
+    ports:
+      - "3306:3306"
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  app:
+    build: .
+    container_name: switching-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true
+      DB_USERNAME: root
+      DB_PASSWORD: REMOVED
+      SERVER_PORT: 8080
+      OUTBOX_DISPATCH_DELAY_MS: 5000
+    ports:
+      - "8080:8080"
+
+volumes:
+  mysql_data:
