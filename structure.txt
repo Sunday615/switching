@@ -1,5 +1,7 @@
 .
 ├── boot.log
+├── docker-compose.yml
+├── Dockerfile
 ├── docs
 │   └── diagrams
 │       └── switching-kafka-iso20022-flow-english.png
@@ -14,7 +16,6 @@
 │   │   │   └── com
 │   │   │       └── example
 │   │   │           └── switching
-│   │   │               ├── SwitchingApplication.java
 │   │   │               ├── audit
 │   │   │               │   ├── entity
 │   │   │               │   │   └── AuditLogEntity.java
@@ -30,6 +31,7 @@
 │   │   │               │       └── TransferRefGenerator.java
 │   │   │               ├── config
 │   │   │               │   ├── JacksonConfig.java
+│   │   │               │   ├── JpaConfig.java
 │   │   │               │   ├── OpenApiConfig.java
 │   │   │               │   ├── SchedulingConfig.java
 │   │   │               │   └── WebConfig.java
@@ -115,6 +117,7 @@
 │   │   │               │   │   └── RoutingRuleRepository.java
 │   │   │               │   └── service
 │   │   │               │       └── RoutingService.java
+│   │   │               ├── SwitchingApplication.java
 │   │   │               └── transfer
 │   │   │                   ├── controller
 │   │   │                   │   ├── TransferController.java
@@ -154,7 +157,7 @@
 │               └── example
 │                   └── switching
 │                       └── SwitchingApplicationTests.java
-├── switching_structure.txt
+├── structure.txt
 └── target
     ├── classes
     │   ├── application.properties
@@ -162,7 +165,6 @@
     │   ├── com
     │   │   └── example
     │   │       └── switching
-    │   │           ├── SwitchingApplication.class
     │   │           ├── audit
     │   │           │   ├── entity
     │   │           │   │   └── AuditLogEntity.class
@@ -178,6 +180,7 @@
     │   │           │       └── TransferRefGenerator.class
     │   │           ├── config
     │   │           │   ├── JacksonConfig.class
+    │   │           │   ├── JpaConfig.class
     │   │           │   ├── OpenApiConfig.class
     │   │           │   ├── SchedulingConfig.class
     │   │           │   └── WebConfig.class
@@ -263,6 +266,7 @@
     │   │           │   │   └── RoutingRuleRepository.class
     │   │           │   └── service
     │   │           │       └── RoutingService.class
+    │   │           ├── SwitchingApplication.class
     │   │           └── transfer
     │   │               ├── controller
     │   │               │   ├── TransferController.class
@@ -313,4 +317,4 @@
                 └── switching
                     └── SwitchingApplicationTests.class
 
-149 directories, 165 files
+149 directories, 169 files

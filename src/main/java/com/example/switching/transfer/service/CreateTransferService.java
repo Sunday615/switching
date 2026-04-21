@@ -7,6 +7,7 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import com.example.switching.audit.service.AuditLogService;
 import com.example.switching.common.util.RequestHashUtil;
@@ -57,6 +58,9 @@ public class CreateTransferService {
 
     @Transactional
     public CreateTransferResponse create(CreateTransferRequest request) {
+        String inquiryRef = null;
+        String transferRef = null;
+
         auditLogService.log(
                 "TRANSFER_REQUEST_RECEIVED",
                 "TRANSFER",
@@ -66,65 +70,72 @@ public class CreateTransferService {
         );
 
         try {
-            String inquiryRef = requireInquiryRef(request.getInquiryRef());
-            String requestHash = RequestHashUtil.sha256(request);
+           String resolvedInquiryRef = requireInquiryRef(request.getInquiryRef());
+inquiryRef = resolvedInquiryRef;
 
-            Optional<TransferEntity> existingTransferOptional =
-                    idempotencyService.findExistingTransfer(CHANNEL_ID, request.getIdempotencyKey(), requestHash);
+String requestHash = RequestHashUtil.sha256(request);
+String incomingIdempotencyKey = normalize(request.getIdempotencyKey());
 
-            if (existingTransferOptional.isPresent()) {
-                TransferEntity existingTransfer = existingTransferOptional.get();
+Optional<TransferEntity> existingTransferOptional = Optional.empty();
+if (StringUtils.hasText(incomingIdempotencyKey)) {
+    existingTransferOptional =
+            idempotencyService.findExistingTransfer(CHANNEL_ID, incomingIdempotencyKey, requestHash);
+}
 
-                Map<String, Object> duplicatePayload = new LinkedHashMap<>();
-                duplicatePayload.put("transferRef", existingTransfer.getTransferRef());
-                duplicatePayload.put("status", existingTransfer.getStatus() == null ? null : existingTransfer.getStatus().name());
-                duplicatePayload.put("idempotencyKey", request.getIdempotencyKey());
-                duplicatePayload.put("inquiryRef", inquiryRef);
+if (existingTransferOptional.isPresent()) {
+    TransferEntity existingTransfer = existingTransferOptional.get();
 
-                auditLogService.log(
-                        "TRANSFER_IDEMPOTENCY_HIT",
-                        "TRANSFER",
-                        existingTransfer.getTransferRef(),
-                        CHANNEL_ID,
-                        duplicatePayload
-                );
+    Map<String, Object> duplicatePayload = new LinkedHashMap<>();
+    duplicatePayload.put("transferRef", existingTransfer.getTransferRef());
+    duplicatePayload.put("status", existingTransfer.getStatus() == null ? null : existingTransfer.getStatus().name());
+    duplicatePayload.put("idempotencyKey", incomingIdempotencyKey);
+    duplicatePayload.put("inquiryRef", resolvedInquiryRef);
 
-                return new CreateTransferResponse(
-                        existingTransfer.getTransferRef(),
-                        existingTransfer.getStatus() == null ? null : existingTransfer.getStatus().name(),
-                        "Duplicate request returned existing transfer"
-                );
-            }
+    auditLogService.log(
+            "TRANSFER_IDEMPOTENCY_HIT",
+            "TRANSFER",
+            existingTransfer.getTransferRef(),
+            CHANNEL_ID,
+            duplicatePayload
+    );
 
-            InquiryEntity inquiry = inquiryRepository.findByInquiryRef(inquiryRef)
-                    .orElseThrow(() -> new InquiryValidationException("Inquiry not found: " + inquiryRef));
+    return new CreateTransferResponse(
+            existingTransfer.getTransferRef(),
+            existingTransfer.getStatus() == null ? null : existingTransfer.getStatus().name(),
+            "Duplicate request returned existing transfer"
+    );
+}
+
+InquiryEntity inquiry = inquiryRepository.findByInquiryRef(resolvedInquiryRef)
+        .orElseThrow(() -> new InquiryValidationException("Inquiry not found: " + resolvedInquiryRef));
 
             validateEligibleInquiry(inquiry, request);
+
+            Map<String, Object> validatedPayload = new LinkedHashMap<>();
+            validatedPayload.put("inquiryRef", inquiryRef);
+            validatedPayload.put("sourceBank", request.getSourceBank());
+            validatedPayload.put("destinationBank", request.getDestinationBank());
+            validatedPayload.put("creditorAccount", request.getCreditorAccount());
+            validatedPayload.put("amount", request.getAmount());
+            validatedPayload.put("currency", request.getCurrency());
 
             auditLogService.log(
                     "TRANSFER_VALIDATED_AGAINST_INQUIRY",
                     "TRANSFER",
                     null,
                     CHANNEL_ID,
-                    Map.of(
-                            "inquiryRef", inquiryRef,
-                            "sourceBank", request.getSourceBank(),
-                            "destinationBank", request.getDestinationBank(),
-                            "creditorAccount", request.getCreditorAccount(),
-                            "amount", request.getAmount(),
-                            "currency", request.getCurrency()
-                    )
+                    validatedPayload
             );
 
-            String transferRef = transferRefGenerator.generate();
+            transferRef = transferRefGenerator.generate();
             LocalDateTime now = LocalDateTime.now();
 
-            String clientTransferId = request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()
-                    ? request.getIdempotencyKey()
+            String clientTransferId = StringUtils.hasText(incomingIdempotencyKey)
+                    ? incomingIdempotencyKey
                     : transferRef;
 
-            String idempotencyKey = request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()
-                    ? request.getIdempotencyKey()
+            String idempotencyKey = StringUtils.hasText(incomingIdempotencyKey)
+                    ? incomingIdempotencyKey
                     : transferRef;
 
             TransferEntity transfer = new TransferEntity();
@@ -198,17 +209,18 @@ public class CreateTransferService {
 
             outboxTransactionService.enqueueTransferDispatch(command);
 
+            Map<String, Object> queuedPayload = new LinkedHashMap<>();
+            queuedPayload.put("transferRef", transferRef);
+            queuedPayload.put("messageType", "TRANSFER_DISPATCH");
+            queuedPayload.put("connectorName", inquiry.getConnectorName());
+            queuedPayload.put("routeCode", inquiry.getRouteCode());
+
             auditLogService.log(
                     "TRANSFER_QUEUED_FOR_DISPATCH",
                     "TRANSFER",
                     transferRef,
                     CHANNEL_ID,
-                    Map.of(
-                            "transferRef", transferRef,
-                            "messageType", "TRANSFER_DISPATCH",
-                            "connectorName", inquiry.getConnectorName(),
-                            "routeCode", inquiry.getRouteCode()
-                    )
+                    queuedPayload
             );
 
             return new CreateTransferResponse(
@@ -221,7 +233,7 @@ public class CreateTransferService {
             auditLogService.logError(
                     "TRANSFER_FAILED",
                     "TRANSFER",
-                    null,
+                    transferRef,
                     CHANNEL_ID,
                     ex
             );
@@ -230,10 +242,10 @@ public class CreateTransferService {
     }
 
     private String requireInquiryRef(String inquiryRef) {
-        if (inquiryRef == null || inquiryRef.isBlank()) {
+        if (!StringUtils.hasText(inquiryRef)) {
             throw new InquiryValidationException("inquiryRef is required before transfer");
         }
-        return inquiryRef;
+        return inquiryRef.trim();
     }
 
     private void validateEligibleInquiry(InquiryEntity inquiry, CreateTransferRequest request) {
@@ -296,5 +308,12 @@ public class CreateTransferService {
 
     private String stringValue(Object value) {
         return value == null ? null : value.toString();
+    }
+
+    private String normalize(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
     }
 }
