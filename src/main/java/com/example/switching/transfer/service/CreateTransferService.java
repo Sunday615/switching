@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -70,44 +71,69 @@ public class CreateTransferService {
         );
 
         try {
-           String resolvedInquiryRef = requireInquiryRef(request.getInquiryRef());
-inquiryRef = resolvedInquiryRef;
+            String resolvedInquiryRef = requireInquiryRef(request.getInquiryRef());
+            inquiryRef = resolvedInquiryRef;
 
-String requestHash = RequestHashUtil.sha256(request);
-String incomingIdempotencyKey = normalize(request.getIdempotencyKey());
+            String requestHash = RequestHashUtil.sha256(request);
+            String incomingIdempotencyKey = normalize(request.getIdempotencyKey());
 
-Optional<TransferEntity> existingTransferOptional = Optional.empty();
-if (StringUtils.hasText(incomingIdempotencyKey)) {
-    existingTransferOptional =
-            idempotencyService.findExistingTransfer(CHANNEL_ID, incomingIdempotencyKey, requestHash);
-}
+            Optional<TransferEntity> existingTransferOptional = Optional.empty();
+            if (StringUtils.hasText(incomingIdempotencyKey)) {
+                existingTransferOptional =
+                        idempotencyService.findExistingTransfer(CHANNEL_ID, incomingIdempotencyKey, requestHash);
+            }
 
-if (existingTransferOptional.isPresent()) {
-    TransferEntity existingTransfer = existingTransferOptional.get();
+            if (existingTransferOptional.isPresent()) {
+                TransferEntity existingTransfer = existingTransferOptional.get();
 
-    Map<String, Object> duplicatePayload = new LinkedHashMap<>();
-    duplicatePayload.put("transferRef", existingTransfer.getTransferRef());
-    duplicatePayload.put("status", existingTransfer.getStatus() == null ? null : existingTransfer.getStatus().name());
-    duplicatePayload.put("idempotencyKey", incomingIdempotencyKey);
-    duplicatePayload.put("inquiryRef", resolvedInquiryRef);
+                Map<String, Object> duplicatePayload = new LinkedHashMap<>();
+                duplicatePayload.put("transferRef", existingTransfer.getTransferRef());
+                duplicatePayload.put("status", existingTransfer.getStatus() == null ? null : existingTransfer.getStatus().name());
+                duplicatePayload.put("idempotencyKey", incomingIdempotencyKey);
+                duplicatePayload.put("inquiryRef", resolvedInquiryRef);
 
-    auditLogService.log(
-            "TRANSFER_IDEMPOTENCY_HIT",
-            "TRANSFER",
-            existingTransfer.getTransferRef(),
-            CHANNEL_ID,
-            duplicatePayload
-    );
+                auditLogService.log(
+                        "TRANSFER_IDEMPOTENCY_HIT",
+                        "TRANSFER",
+                        existingTransfer.getTransferRef(),
+                        CHANNEL_ID,
+                        duplicatePayload
+                );
 
-    return new CreateTransferResponse(
-            existingTransfer.getTransferRef(),
-            existingTransfer.getStatus() == null ? null : existingTransfer.getStatus().name(),
-            "Duplicate request returned existing transfer"
-    );
-}
+                return new CreateTransferResponse(
+                        existingTransfer.getTransferRef(),
+                        existingTransfer.getStatus() == null ? null : existingTransfer.getStatus().name(),
+                        "Duplicate request returned existing transfer"
+                );
+            }
 
-InquiryEntity inquiry = inquiryRepository.findByInquiryRef(resolvedInquiryRef)
-        .orElseThrow(() -> new InquiryValidationException("Inquiry not found: " + resolvedInquiryRef));
+            Optional<TransferEntity> existingTransferByInquiryOptional = transferRepository.findByInquiryRef(resolvedInquiryRef);
+            if (existingTransferByInquiryOptional.isPresent()) {
+                TransferEntity existingTransferByInquiry = existingTransferByInquiryOptional.get();
+
+                Map<String, Object> inquiryReusePayload = new LinkedHashMap<>();
+                inquiryReusePayload.put("inquiryRef", resolvedInquiryRef);
+                inquiryReusePayload.put("existingTransferRef", existingTransferByInquiry.getTransferRef());
+                inquiryReusePayload.put(
+                        "existingTransferStatus",
+                        existingTransferByInquiry.getStatus() == null ? null : existingTransferByInquiry.getStatus().name()
+                );
+
+                auditLogService.log(
+                        "TRANSFER_INQUIRY_ALREADY_USED",
+                        "TRANSFER",
+                        existingTransferByInquiry.getTransferRef(),
+                        CHANNEL_ID,
+                        inquiryReusePayload
+                );
+
+                throw new InquiryValidationException(
+                        "Inquiry already used by transfer: " + existingTransferByInquiry.getTransferRef()
+                );
+            }
+
+            InquiryEntity inquiry = inquiryRepository.findByInquiryRef(resolvedInquiryRef)
+                    .orElseThrow(() -> new InquiryValidationException("Inquiry not found: " + resolvedInquiryRef));
 
             validateEligibleInquiry(inquiry, request);
 
@@ -159,7 +185,17 @@ InquiryEntity inquiry = inquiryRepository.findByInquiryRef(resolvedInquiryRef)
             transfer.setErrorMessage(null);
             transfer.setReference(request.getReference());
 
-            transferRepository.save(transfer);
+            try {
+                transferRepository.saveAndFlush(transfer);
+            } catch (DataIntegrityViolationException ex) {
+                Optional<TransferEntity> existingTransferAfterConflict = transferRepository.findByInquiryRef(inquiryRef);
+                if (existingTransferAfterConflict.isPresent()) {
+                    throw new InquiryValidationException(
+                            "Inquiry already used by transfer: " + existingTransferAfterConflict.get().getTransferRef()
+                    );
+                }
+                throw ex;
+            }
 
             TransferStatusHistoryEntity history = new TransferStatusHistoryEntity();
             history.setTransferRef(transferRef);

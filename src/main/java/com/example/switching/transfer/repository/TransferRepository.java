@@ -11,4 +11,6 @@ import com.example.switching.transfer.entity.TransferEntity;
 public interface TransferRepository extends JpaRepository<TransferEntity, Long> {
 
     Optional<TransferEntity> findByTransferRef(String transferRef);
+
+    Optional<TransferEntity> findByInquiryRef(String inquiryRef);
 }
