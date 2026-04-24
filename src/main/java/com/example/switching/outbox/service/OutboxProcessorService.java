@@ -13,6 +13,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import com.example.switching.audit.service.AuditLogService;
+import com.example.switching.common.error.ErrorCatalog;
+import com.example.switching.common.error.ErrorClassifier;
 import com.example.switching.connector.BankConnector;
 import com.example.switching.idempotency.service.IdempotencyService;
 import com.example.switching.outbox.dto.BankDispatchResult;
@@ -35,8 +37,8 @@ public class OutboxProcessorService {
     private static final String ENTITY_TYPE = "TRANSFER";
     private static final String SOURCE_SYSTEM = "WORKER";
     private static final String IDEMPOTENCY_CHANNEL = "API";
-    private static final String TECHNICAL_FAILURE_CODE = "DISPATCH_EXCEPTION";
     private static final int MAX_ERROR_MESSAGE_LENGTH = 500;
+    private static final int MAX_RETRY = 3;
 
     private final OutboxEventRepository outboxEventRepository;
     private final TransferRepository transferRepository;
@@ -45,6 +47,7 @@ public class OutboxProcessorService {
     private final ObjectMapper objectMapper;
     private final AuditLogService auditLogService;
     private final IdempotencyService idempotencyService;
+    private final ErrorClassifier errorClassifier;
     private final TransactionTemplate transactionTemplate;
 
     public OutboxProcessorService(OutboxEventRepository outboxEventRepository,
@@ -54,6 +57,7 @@ public class OutboxProcessorService {
                                   ObjectMapper objectMapper,
                                   AuditLogService auditLogService,
                                   IdempotencyService idempotencyService,
+                                  ErrorClassifier errorClassifier,
                                   PlatformTransactionManager transactionManager) {
         this.outboxEventRepository = outboxEventRepository;
         this.transferRepository = transferRepository;
@@ -62,6 +66,7 @@ public class OutboxProcessorService {
         this.objectMapper = objectMapper;
         this.auditLogService = auditLogService;
         this.idempotencyService = idempotencyService;
+        this.errorClassifier = errorClassifier;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -193,15 +198,17 @@ public class OutboxProcessorService {
         OutboxEventEntity event = getOutboxEventOrThrow(outboxEventId);
         TransferEntity transfer = getTransferOrThrow(transferRef);
 
+        ErrorCatalog catalog = ErrorCatalog.EXT_001;
+
         transfer.setStatus(TransferStatus.FAILED);
-        transfer.setErrorCode(result.getErrorCode());
+        transfer.setErrorCode(catalog.getErrorCode());
         transfer.setErrorMessage(trimMessage(result.getErrorMessage()));
         transferRepository.save(transfer);
 
         saveTransferHistory(
                 transfer.getTransferRef(),
                 TransferStatus.FAILED.name(),
-                result.getErrorCode()
+                catalog.getErrorCode()
         );
 
         event.setStatus(OutboxStatus.FAILED);
@@ -215,12 +222,13 @@ public class OutboxProcessorService {
             );
         }
 
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("outboxEventId", event.getId());
-        payload.put("transferRef", transfer.getTransferRef());
-        payload.put("status", TransferStatus.FAILED.name());
-        payload.put("errorCode", result.getErrorCode());
-        payload.put("errorMessage", trimMessage(result.getErrorMessage()));
+        Map<String, Object> payload = buildErrorPayload(
+                catalog,
+                event.getId(),
+                transfer.getTransferRef(),
+                result.getErrorMessage()
+        );
+        payload.put("downstreamErrorCode", result.getErrorCode());
 
         auditLogService.log(
                 "OUTBOX_DISPATCH_FAILED",
@@ -230,14 +238,18 @@ public class OutboxProcessorService {
                 payload
         );
 
-        log.warn("Outbox dispatch business failure: outboxEventId={} transferRef={} errorCode={}",
-                event.getId(), transfer.getTransferRef(), result.getErrorCode());
+        log.warn("Outbox dispatch downstream failure: outboxEventId={} transferRef={} errorCode={}",
+                event.getId(), transfer.getTransferRef(), catalog.getErrorCode());
     }
 
     private void finalizeTechnicalFailure(Long outboxEventId,
                                           String transferRef,
                                           Exception ex) {
+        ErrorCatalog catalog = errorClassifier.classify(ex);
         OutboxEventEntity event = getOutboxEventOrThrow(outboxEventId);
+
+        int nextRetryCount = safeRetryCount(event.getRetryCount()) + 1;
+        boolean shouldRetry = catalog.isRetryable() && nextRetryCount < MAX_RETRY;
 
         TransferEntity transfer = null;
         if (StringUtils.hasText(transferRef)) {
@@ -245,47 +257,77 @@ public class OutboxProcessorService {
         }
 
         if (transfer != null) {
-            transfer.setStatus(TransferStatus.FAILED);
-            transfer.setErrorCode(TECHNICAL_FAILURE_CODE);
+            transfer.setErrorCode(catalog.getErrorCode());
             transfer.setErrorMessage(trimMessage(ex.getMessage()));
-            transferRepository.save(transfer);
 
-            saveTransferHistory(
-                    transfer.getTransferRef(),
-                    TransferStatus.FAILED.name(),
-                    TECHNICAL_FAILURE_CODE
-            );
+            if (!shouldRetry) {
+                transfer.setStatus(TransferStatus.FAILED);
+                transferRepository.save(transfer);
 
-            if (StringUtils.hasText(transfer.getIdempotencyKey())) {
-                idempotencyService.updateStatus(
-                        IDEMPOTENCY_CHANNEL,
-                        transfer.getIdempotencyKey(),
-                        TransferStatus.FAILED.name()
+                saveTransferHistory(
+                        transfer.getTransferRef(),
+                        TransferStatus.FAILED.name(),
+                        catalog.getErrorCode()
                 );
+
+                if (StringUtils.hasText(transfer.getIdempotencyKey())) {
+                    idempotencyService.updateStatus(
+                            IDEMPOTENCY_CHANNEL,
+                            transfer.getIdempotencyKey(),
+                            TransferStatus.FAILED.name()
+                    );
+                }
+            } else {
+                transferRepository.save(transfer);
             }
         }
 
-        event.setStatus(OutboxStatus.FAILED);
-        event.setRetryCount(safeRetryCount(event.getRetryCount()) + 1);
+        event.setRetryCount(nextRetryCount);
+        event.setStatus(shouldRetry ? OutboxStatus.PENDING : OutboxStatus.FAILED);
         outboxEventRepository.save(event);
 
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("outboxEventId", event.getId());
-        payload.put("transferRef", transferRef);
-        payload.put("status", TransferStatus.FAILED.name());
-        payload.put("errorCode", TECHNICAL_FAILURE_CODE);
-        payload.put("errorMessage", trimMessage(ex.getMessage()));
+        Map<String, Object> payload = buildErrorPayload(
+                catalog,
+                event.getId(),
+                StringUtils.hasText(transferRef) ? transferRef : event.getTransferRef(),
+                ex.getMessage()
+        );
+        payload.put("attemptNo", nextRetryCount);
+        payload.put("maxRetry", MAX_RETRY);
+        payload.put("willRetry", shouldRetry);
 
         auditLogService.log(
-                "OUTBOX_DISPATCH_FAILED",
+                shouldRetry ? "OUTBOX_DISPATCH_RETRY_SCHEDULED" : "OUTBOX_DISPATCH_FAILED",
                 ENTITY_TYPE,
                 StringUtils.hasText(transferRef) ? transferRef : event.getTransferRef(),
                 SOURCE_SYSTEM,
                 payload
         );
 
-        log.error("Outbox dispatch technical failure: outboxEventId={} transferRef={}",
-                event.getId(), transferRef, ex);
+        if (shouldRetry) {
+            log.warn("Outbox dispatch retry scheduled: outboxEventId={} transferRef={} errorCode={} attempt={}/{}",
+                    event.getId(), transferRef, catalog.getErrorCode(), nextRetryCount, MAX_RETRY);
+        } else {
+            log.error("Outbox dispatch terminal failure: outboxEventId={} transferRef={} errorCode={}",
+                    event.getId(), transferRef, catalog.getErrorCode(), ex);
+        }
+    }
+
+    private Map<String, Object> buildErrorPayload(ErrorCatalog catalog,
+                                                  Long outboxEventId,
+                                                  String transferRef,
+                                                  String errorMessage) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("outboxEventId", outboxEventId);
+        payload.put("transferRef", transferRef);
+        payload.put("errorCode", catalog.getErrorCode());
+        payload.put("category", catalog.getCategory().name());
+        payload.put("layer", catalog.getLayer().name());
+        payload.put("phase", catalog.getPhase().name());
+        payload.put("retryable", catalog.isRetryable());
+        payload.put("message", catalog.getDefaultMessage());
+        payload.put("errorMessage", trimMessage(errorMessage));
+        return payload;
     }
 
     private OutboxEventEntity getOutboxEventOrThrow(Long outboxEventId) {

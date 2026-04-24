@@ -87,6 +87,89 @@ public enum ErrorCatalog {
             "Idempotency conflict"
     ),
 
+    OUT_001(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "INTERNAL_SERVER_ERROR",
+            "OUT-001",
+            ErrorCategory.CORE,
+            ErrorLayer.OUTBOX,
+            ErrorPhase.PARSE_PAYLOAD,
+            false,
+            "Outbox payload parse failed"
+    ),
+    OUT_002(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "INTERNAL_SERVER_ERROR",
+            "OUT-002",
+            ErrorCategory.CORE,
+            ErrorLayer.WORKER,
+            ErrorPhase.DISPATCH_TRANSFER,
+            true,
+            "Outbox worker processing failed"
+    ),
+
+    NET_001(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "SERVICE_UNAVAILABLE",
+            "NET-001",
+            ErrorCategory.NETWORK,
+            ErrorLayer.CONNECTOR,
+            ErrorPhase.DISPATCH_TRANSFER,
+            true,
+            "Downstream connection failed"
+    ),
+    NET_002(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "SERVICE_UNAVAILABLE",
+            "NET-002",
+            ErrorCategory.NETWORK,
+            ErrorLayer.CONNECTOR,
+            ErrorPhase.DISPATCH_TRANSFER,
+            true,
+            "Downstream timeout"
+    ),
+    NET_003(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "SERVICE_UNAVAILABLE",
+            "NET-003",
+            ErrorCategory.NETWORK,
+            ErrorLayer.CONNECTOR,
+            ErrorPhase.DISPATCH_TRANSFER,
+            true,
+            "DNS resolution failed"
+    ),
+    NET_004(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "SERVICE_UNAVAILABLE",
+            "NET-004",
+            ErrorCategory.NETWORK,
+            ErrorLayer.CONNECTOR,
+            ErrorPhase.DISPATCH_TRANSFER,
+            true,
+            "TLS or SSL handshake failed"
+    ),
+
+    EXT_001(
+            HttpStatus.BAD_GATEWAY,
+            "BAD_GATEWAY",
+            "EXT-001",
+            ErrorCategory.DOWNSTREAM,
+            ErrorLayer.CONNECTOR,
+            ErrorPhase.DISPATCH_TRANSFER,
+            false,
+            "Downstream bank rejected transfer"
+    ),
+    EXT_002(
+            HttpStatus.BAD_GATEWAY,
+            "BAD_GATEWAY",
+            "EXT-002",
+            ErrorCategory.DOWNSTREAM,
+            ErrorLayer.CONNECTOR,
+            ErrorPhase.DISPATCH_TRANSFER,
+            false,
+            "Downstream bank returned invalid response"
+    ),
+
     INF_DB_001(
             HttpStatus.INTERNAL_SERVER_ERROR,
             "INTERNAL_SERVER_ERROR",

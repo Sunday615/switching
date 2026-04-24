@@ -14,6 +14,10 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEventEntity, 
 
     List<OutboxEventEntity> findTop20ByStatusOrderByIdAsc(OutboxStatus status);
 
+    List<OutboxEventEntity> findAllByTransferRefOrderByIdAsc(String transferRef);
+
+    long countByStatus(OutboxStatus status);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
            update OutboxEventEntity e

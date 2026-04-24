@@ -11,4 +11,5 @@ import com.example.switching.transfer.entity.TransferStatusHistoryEntity;
 public interface TransferStatusHistoryRepository extends JpaRepository<TransferStatusHistoryEntity, Long> {
 
     List<TransferStatusHistoryEntity> findByTransferRefOrderByCreatedAtAsc(String transferRef);
+    List<TransferStatusHistoryEntity> findAllByTransferRefOrderByIdAsc(String transferRef);
 }
