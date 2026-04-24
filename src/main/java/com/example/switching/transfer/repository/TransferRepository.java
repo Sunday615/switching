@@ -1,5 +1,6 @@
 package com.example.switching.transfer.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,4 +14,6 @@ public interface TransferRepository extends JpaRepository<TransferEntity, Long> 
     Optional<TransferEntity> findByTransferRef(String transferRef);
 
     Optional<TransferEntity> findByInquiryRef(String inquiryRef);
+
+    List<TransferEntity> findAllByInquiryRefOrderByIdAsc(String inquiryRef);
 }

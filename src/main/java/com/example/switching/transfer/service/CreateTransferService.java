@@ -24,6 +24,7 @@ import com.example.switching.transfer.dto.CreateTransferResponse;
 import com.example.switching.transfer.entity.TransferEntity;
 import com.example.switching.transfer.entity.TransferStatusHistoryEntity;
 import com.example.switching.transfer.enums.TransferStatus;
+import com.example.switching.transfer.exception.InquiryAlreadyUsedException;
 import com.example.switching.transfer.exception.InquiryValidationException;
 import com.example.switching.transfer.repository.TransferRepository;
 import com.example.switching.transfer.repository.TransferStatusHistoryRepository;
@@ -107,35 +108,20 @@ public class CreateTransferService {
                 );
             }
 
-            Optional<TransferEntity> existingTransferByInquiryOptional = transferRepository.findByInquiryRef(resolvedInquiryRef);
-            if (existingTransferByInquiryOptional.isPresent()) {
-                TransferEntity existingTransferByInquiry = existingTransferByInquiryOptional.get();
-
-                Map<String, Object> inquiryReusePayload = new LinkedHashMap<>();
-                inquiryReusePayload.put("inquiryRef", resolvedInquiryRef);
-                inquiryReusePayload.put("existingTransferRef", existingTransferByInquiry.getTransferRef());
-                inquiryReusePayload.put(
-                        "existingTransferStatus",
-                        existingTransferByInquiry.getStatus() == null ? null : existingTransferByInquiry.getStatus().name()
-                );
-
-                auditLogService.log(
-                        "TRANSFER_INQUIRY_ALREADY_USED",
-                        "TRANSFER",
-                        existingTransferByInquiry.getTransferRef(),
-                        CHANNEL_ID,
-                        inquiryReusePayload
-                );
-
-                throw new InquiryValidationException(
-                        "Inquiry already used by transfer: " + existingTransferByInquiry.getTransferRef()
-                );
-            }
-
             InquiryEntity inquiry = inquiryRepository.findByInquiryRef(resolvedInquiryRef)
                     .orElseThrow(() -> new InquiryValidationException("Inquiry not found: " + resolvedInquiryRef));
 
             validateEligibleInquiry(inquiry, request);
+
+            Optional<TransferEntity> existingTransferByInquiry =
+                    transferRepository.findByInquiryRef(resolvedInquiryRef);
+
+            if (existingTransferByInquiry.isPresent()) {
+                throw new InquiryAlreadyUsedException(
+                        "Inquiry already used by transfer: " +
+                        existingTransferByInquiry.get().getTransferRef()
+                );
+            }
 
             Map<String, Object> validatedPayload = new LinkedHashMap<>();
             validatedPayload.put("inquiryRef", inquiryRef);
@@ -188,13 +174,7 @@ public class CreateTransferService {
             try {
                 transferRepository.saveAndFlush(transfer);
             } catch (DataIntegrityViolationException ex) {
-                Optional<TransferEntity> existingTransferAfterConflict = transferRepository.findByInquiryRef(inquiryRef);
-                if (existingTransferAfterConflict.isPresent()) {
-                    throw new InquiryValidationException(
-                            "Inquiry already used by transfer: " + existingTransferAfterConflict.get().getTransferRef()
-                    );
-                }
-                throw ex;
+                throw new InquiryAlreadyUsedException("Inquiry already used by another transfer");
             }
 
             TransferStatusHistoryEntity history = new TransferStatusHistoryEntity();
