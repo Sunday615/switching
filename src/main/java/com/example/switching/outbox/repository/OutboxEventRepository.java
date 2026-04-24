@@ -3,6 +3,7 @@ package com.example.switching.outbox.repository;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -18,6 +19,19 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEventEntity, 
     List<OutboxEventEntity> findAllByTransferRefOrderByIdAsc(String transferRef);
 
     long countByStatus(OutboxStatus status);
+
+    @Query("""
+           select e
+             from OutboxEventEntity e
+            where (:status is null or e.status = :status)
+              and (:transferRef is null or e.transferRef = :transferRef)
+            order by e.id desc
+           """)
+    List<OutboxEventEntity> searchOutboxEvents(
+            @Param("status") OutboxStatus status,
+            @Param("transferRef") String transferRef,
+            Pageable pageable
+    );
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
