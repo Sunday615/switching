@@ -190,6 +190,15 @@ public enum ErrorCatalog {
                         ErrorPhase.DISPATCH_TRANSFER,
                         true,
                         "Outbox stuck processing recovered"),
+        OUT_004(
+                        HttpStatus.CONFLICT,
+                        "CONFLICT",
+                        "OUT-004",
+                        ErrorCategory.CORE,
+                        ErrorLayer.OUTBOX,
+                        ErrorPhase.DISPATCH_TRANSFER,
+                        false,
+                        "Outbox event cannot be manually retried"),
 
         SYS_001(
                         HttpStatus.INTERNAL_SERVER_ERROR,
