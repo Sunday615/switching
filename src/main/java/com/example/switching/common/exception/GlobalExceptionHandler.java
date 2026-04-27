@@ -16,6 +16,9 @@ import com.example.switching.common.error.ErrorCatalog;
 import com.example.switching.common.filter.RequestIdFilter;
 import com.example.switching.idempotency.exception.IdempotencyConflictException;
 import com.example.switching.inquiry.exception.InquiryNotFoundException;
+import com.example.switching.iso.exception.IsoMessageCryptoException;
+import com.example.switching.iso.exception.IsoMessageInvalidStateException;
+import com.example.switching.iso.exception.IsoMessageNotFoundException;
 import com.example.switching.transfer.exception.InquiryAlreadyUsedException;
 import com.example.switching.transfer.exception.InquiryValidationException;
 import com.example.switching.transfer.exception.TransferNotFoundException;
@@ -164,6 +167,8 @@ public class GlobalExceptionHandler {
                                 null);
         }
 
+ 
+
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<ApiErrorResponse> handleIllegalArgument(
                         IllegalArgumentException ex,
@@ -171,6 +176,42 @@ public class GlobalExceptionHandler {
 
                 return buildResponse(
                                 ErrorCatalog.REQ_001,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(IsoMessageNotFoundException.class)
+        public ResponseEntity<ApiErrorResponse> handleIsoMessageNotFound(
+                        IsoMessageNotFoundException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.ISO_001,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(IsoMessageInvalidStateException.class)
+        public ResponseEntity<ApiErrorResponse> handleIsoMessageInvalidState(
+                        IsoMessageInvalidStateException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.ISO_002,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(IsoMessageCryptoException.class)
+        public ResponseEntity<ApiErrorResponse> handleIsoMessageCrypto(
+                        IsoMessageCryptoException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.ISO_003,
                                 ex.getMessage(),
                                 request,
                                 null);

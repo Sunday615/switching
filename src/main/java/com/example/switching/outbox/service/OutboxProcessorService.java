@@ -49,16 +49,17 @@ public class OutboxProcessorService {
     private final IdempotencyService idempotencyService;
     private final ErrorClassifier errorClassifier;
     private final TransactionTemplate transactionTemplate;
+    
 
     public OutboxProcessorService(OutboxEventRepository outboxEventRepository,
-                                  TransferRepository transferRepository,
-                                  TransferStatusHistoryRepository transferStatusHistoryRepository,
-                                  BankConnector bankConnector,
-                                  ObjectMapper objectMapper,
-                                  AuditLogService auditLogService,
-                                  IdempotencyService idempotencyService,
-                                  ErrorClassifier errorClassifier,
-                                  PlatformTransactionManager transactionManager) {
+            TransferRepository transferRepository,
+            TransferStatusHistoryRepository transferStatusHistoryRepository,
+            BankConnector bankConnector,
+            ObjectMapper objectMapper,
+            AuditLogService auditLogService,
+            IdempotencyService idempotencyService,
+            ErrorClassifier errorClassifier,
+            PlatformTransactionManager transactionManager) {
         this.outboxEventRepository = outboxEventRepository;
         this.transferRepository = transferRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
@@ -83,6 +84,24 @@ public class OutboxProcessorService {
 
         try {
             command = objectMapper.readValue(claimedEvent.getPayload(), DispatchTransferCommand.class);
+            Map<String, Object> isoDispatchPayload = new LinkedHashMap<>();
+            isoDispatchPayload.put("outboxEventId", claimedEvent.getId());
+            isoDispatchPayload.put("transferRef", command.getTransferRef());
+            isoDispatchPayload.put("isoMessageId", command.getIsoMessageId());
+            isoDispatchPayload.put("messageType", claimedEvent.getMessageType());
+            isoDispatchPayload.put("connectorName", command.getConnectorName());
+            isoDispatchPayload.put("routeCode", command.getRouteCode());
+
+            auditLogService.log(
+                    "OUTBOX_ISO_MESSAGE_RESOLVED",
+                    ENTITY_TYPE,
+                    command.getTransferRef(),
+                    SOURCE_SYSTEM,
+                    isoDispatchPayload);
+            if (command.getIsoMessageId() == null) {
+                throw new IllegalStateException(
+                        "Missing isoMessageId in outbox payload for transferRef: " + command.getTransferRef());
+            }
 
             BankDispatchResult result = bankConnector.dispatch(command);
             if (result == null) {
@@ -93,21 +112,18 @@ public class OutboxProcessorService {
             final BankDispatchResult finalResult = result;
 
             if (result.success()) {
-                transactionTemplate.executeWithoutResult(status ->
-                        finalizeSuccess(claimedEvent.getId(), finalCommand.getTransferRef(), finalResult)
-                );
+                transactionTemplate.executeWithoutResult(
+                        status -> finalizeSuccess(claimedEvent.getId(), finalCommand.getTransferRef(), finalResult));
             } else {
-                transactionTemplate.executeWithoutResult(status ->
-                        finalizeBusinessFailure(claimedEvent.getId(), finalCommand.getTransferRef(), finalResult)
-                );
+                transactionTemplate.executeWithoutResult(status -> finalizeBusinessFailure(claimedEvent.getId(),
+                        finalCommand.getTransferRef(), finalResult));
             }
 
         } catch (Exception ex) {
             final String transferRef = resolveTransferRef(claimedEvent, command);
 
-            transactionTemplate.executeWithoutResult(status ->
-                    finalizeTechnicalFailure(claimedEvent.getId(), transferRef, ex)
-            );
+            transactionTemplate
+                    .executeWithoutResult(status -> finalizeTechnicalFailure(claimedEvent.getId(), transferRef, ex));
         }
     }
 
@@ -115,8 +131,7 @@ public class OutboxProcessorService {
         int updated = outboxEventRepository.claimPendingEvent(
                 outboxEventId,
                 OutboxStatus.PENDING,
-                OutboxStatus.PROCESSING
-        );
+                OutboxStatus.PROCESSING);
 
         if (updated == 0) {
             return null;
@@ -134,8 +149,7 @@ public class OutboxProcessorService {
                 ENTITY_TYPE,
                 event.getTransferRef(),
                 SOURCE_SYSTEM,
-                payload
-        );
+                payload);
 
         log.info("Claimed outboxEventId={} transferRef={} as PROCESSING",
                 event.getId(), event.getTransferRef());
@@ -144,8 +158,8 @@ public class OutboxProcessorService {
     }
 
     private void finalizeSuccess(Long outboxEventId,
-                                 String transferRef,
-                                 BankDispatchResult result) {
+            String transferRef,
+            BankDispatchResult result) {
         OutboxEventEntity event = getOutboxEventOrThrow(outboxEventId);
         TransferEntity transfer = getTransferOrThrow(transferRef);
 
@@ -159,8 +173,7 @@ public class OutboxProcessorService {
         saveTransferHistory(
                 transfer.getTransferRef(),
                 TransferStatus.SUCCESS.name(),
-                null
-        );
+                null);
 
         event.setStatus(OutboxStatus.SUCCESS);
         outboxEventRepository.save(event);
@@ -169,8 +182,7 @@ public class OutboxProcessorService {
             idempotencyService.updateStatus(
                     IDEMPOTENCY_CHANNEL,
                     transfer.getIdempotencyKey(),
-                    TransferStatus.SUCCESS.name()
-            );
+                    TransferStatus.SUCCESS.name());
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -185,16 +197,15 @@ public class OutboxProcessorService {
                 ENTITY_TYPE,
                 transfer.getTransferRef(),
                 SOURCE_SYSTEM,
-                payload
-        );
+                payload);
 
         log.info("Outbox dispatch success: outboxEventId={} transferRef={}",
                 event.getId(), transfer.getTransferRef());
     }
 
     private void finalizeBusinessFailure(Long outboxEventId,
-                                         String transferRef,
-                                         BankDispatchResult result) {
+            String transferRef,
+            BankDispatchResult result) {
         OutboxEventEntity event = getOutboxEventOrThrow(outboxEventId);
         TransferEntity transfer = getTransferOrThrow(transferRef);
 
@@ -208,8 +219,7 @@ public class OutboxProcessorService {
         saveTransferHistory(
                 transfer.getTransferRef(),
                 TransferStatus.FAILED.name(),
-                catalog.getErrorCode()
-        );
+                catalog.getErrorCode());
 
         event.setStatus(OutboxStatus.FAILED);
         outboxEventRepository.save(event);
@@ -218,16 +228,14 @@ public class OutboxProcessorService {
             idempotencyService.updateStatus(
                     IDEMPOTENCY_CHANNEL,
                     transfer.getIdempotencyKey(),
-                    TransferStatus.FAILED.name()
-            );
+                    TransferStatus.FAILED.name());
         }
 
         Map<String, Object> payload = buildErrorPayload(
                 catalog,
                 event.getId(),
                 transfer.getTransferRef(),
-                result.getErrorMessage()
-        );
+                result.getErrorMessage());
         payload.put("downstreamErrorCode", result.getErrorCode());
 
         auditLogService.log(
@@ -235,16 +243,15 @@ public class OutboxProcessorService {
                 ENTITY_TYPE,
                 transfer.getTransferRef(),
                 SOURCE_SYSTEM,
-                payload
-        );
+                payload);
 
         log.warn("Outbox dispatch downstream failure: outboxEventId={} transferRef={} errorCode={}",
                 event.getId(), transfer.getTransferRef(), catalog.getErrorCode());
     }
 
     private void finalizeTechnicalFailure(Long outboxEventId,
-                                          String transferRef,
-                                          Exception ex) {
+            String transferRef,
+            Exception ex) {
         ErrorCatalog catalog = errorClassifier.classify(ex);
         OutboxEventEntity event = getOutboxEventOrThrow(outboxEventId);
 
@@ -267,15 +274,13 @@ public class OutboxProcessorService {
                 saveTransferHistory(
                         transfer.getTransferRef(),
                         TransferStatus.FAILED.name(),
-                        catalog.getErrorCode()
-                );
+                        catalog.getErrorCode());
 
                 if (StringUtils.hasText(transfer.getIdempotencyKey())) {
                     idempotencyService.updateStatus(
                             IDEMPOTENCY_CHANNEL,
                             transfer.getIdempotencyKey(),
-                            TransferStatus.FAILED.name()
-                    );
+                            TransferStatus.FAILED.name());
                 }
             } else {
                 transferRepository.save(transfer);
@@ -290,8 +295,7 @@ public class OutboxProcessorService {
                 catalog,
                 event.getId(),
                 StringUtils.hasText(transferRef) ? transferRef : event.getTransferRef(),
-                ex.getMessage()
-        );
+                ex.getMessage());
         payload.put("attemptNo", nextRetryCount);
         payload.put("maxRetry", MAX_RETRY);
         payload.put("willRetry", shouldRetry);
@@ -301,8 +305,7 @@ public class OutboxProcessorService {
                 ENTITY_TYPE,
                 StringUtils.hasText(transferRef) ? transferRef : event.getTransferRef(),
                 SOURCE_SYSTEM,
-                payload
-        );
+                payload);
 
         if (shouldRetry) {
             log.warn("Outbox dispatch retry scheduled: outboxEventId={} transferRef={} errorCode={} attempt={}/{}",
@@ -314,9 +317,9 @@ public class OutboxProcessorService {
     }
 
     private Map<String, Object> buildErrorPayload(ErrorCatalog catalog,
-                                                  Long outboxEventId,
-                                                  String transferRef,
-                                                  String errorMessage) {
+            Long outboxEventId,
+            String transferRef,
+            String errorMessage) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("outboxEventId", outboxEventId);
         payload.put("transferRef", transferRef);
@@ -333,15 +336,13 @@ public class OutboxProcessorService {
     private OutboxEventEntity getOutboxEventOrThrow(Long outboxEventId) {
         return outboxEventRepository.findById(outboxEventId)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Outbox event not found for id: " + outboxEventId
-                ));
+                        "Outbox event not found for id: " + outboxEventId));
     }
 
     private TransferEntity getTransferOrThrow(String transferRef) {
         return transferRepository.findByTransferRef(transferRef)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Transfer not found for transferRef: " + transferRef
-                ));
+                        "Transfer not found for transferRef: " + transferRef));
     }
 
     private void saveTransferHistory(String transferRef, String status, String reasonCode) {

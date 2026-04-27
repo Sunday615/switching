@@ -199,6 +199,33 @@ public enum ErrorCatalog {
                         ErrorPhase.DISPATCH_TRANSFER,
                         false,
                         "Outbox event cannot be manually retried"),
+        ISO_001(
+                        HttpStatus.NOT_FOUND,
+                        "NOT_FOUND",
+                        "ISO-001",
+                        ErrorCategory.CORE,
+                        ErrorLayer.ISO,
+                        ErrorPhase.READ_RESOURCE,
+                        false,
+                        "ISO message not found"),
+        ISO_002(
+                        HttpStatus.CONFLICT,
+                        "CONFLICT",
+                        "ISO-002",
+                        ErrorCategory.CORE,
+                        ErrorLayer.ISO,
+                        ErrorPhase.VALIDATE_REQUEST,
+                        false,
+                        "ISO message invalid state"),
+        ISO_003(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "INTERNAL_SERVER_ERROR",
+                        "ISO-003",
+                        ErrorCategory.INFRASTRUCTURE,
+                        ErrorLayer.ISO,
+                        ErrorPhase.UNKNOWN,
+                        false,
+                        "ISO message crypto operation failed"),
 
         SYS_001(
                         HttpStatus.INTERNAL_SERVER_ERROR,

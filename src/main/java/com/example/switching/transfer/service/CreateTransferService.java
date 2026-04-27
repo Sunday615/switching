@@ -17,6 +17,8 @@ import com.example.switching.idempotency.service.IdempotencyService;
 import com.example.switching.inquiry.entity.InquiryEntity;
 import com.example.switching.inquiry.enums.InquiryStatus;
 import com.example.switching.inquiry.repository.InquiryRepository;
+import com.example.switching.iso.entity.IsoMessageEntity;
+import com.example.switching.iso.service.IsoMessageService;
 import com.example.switching.outbox.dto.DispatchTransferCommand;
 import com.example.switching.outbox.service.OutboxTransactionService;
 import com.example.switching.transfer.dto.CreateTransferRequest;
@@ -33,6 +35,7 @@ import com.example.switching.transfer.repository.TransferStatusHistoryRepository
 public class CreateTransferService {
 
     private static final String CHANNEL_ID = "API";
+    private final IsoMessageService isoMessageService;
 
     private final TransferRefGenerator transferRefGenerator;
     private final TransferRepository transferRepository;
@@ -43,12 +46,13 @@ public class CreateTransferService {
     private final AuditLogService auditLogService;
 
     public CreateTransferService(TransferRefGenerator transferRefGenerator,
-                                 TransferRepository transferRepository,
-                                 TransferStatusHistoryRepository transferStatusHistoryRepository,
-                                 InquiryRepository inquiryRepository,
-                                 IdempotencyService idempotencyService,
-                                 OutboxTransactionService outboxTransactionService,
-                                 AuditLogService auditLogService) {
+            TransferRepository transferRepository,
+            TransferStatusHistoryRepository transferStatusHistoryRepository,
+            InquiryRepository inquiryRepository,
+            IdempotencyService idempotencyService,
+            OutboxTransactionService outboxTransactionService,
+            AuditLogService auditLogService,
+            IsoMessageService isoMessageService) {
         this.transferRefGenerator = transferRefGenerator;
         this.transferRepository = transferRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
@@ -56,6 +60,7 @@ public class CreateTransferService {
         this.idempotencyService = idempotencyService;
         this.outboxTransactionService = outboxTransactionService;
         this.auditLogService = auditLogService;
+        this.isoMessageService = isoMessageService;
     }
 
     @Transactional
@@ -68,8 +73,7 @@ public class CreateTransferService {
                 "TRANSFER",
                 null,
                 CHANNEL_ID,
-                request
-        );
+                request);
 
         try {
             String resolvedInquiryRef = requireInquiryRef(request.getInquiryRef());
@@ -80,8 +84,8 @@ public class CreateTransferService {
 
             Optional<TransferEntity> existingTransferOptional = Optional.empty();
             if (StringUtils.hasText(incomingIdempotencyKey)) {
-                existingTransferOptional =
-                        idempotencyService.findExistingTransfer(CHANNEL_ID, incomingIdempotencyKey, requestHash);
+                existingTransferOptional = idempotencyService.findExistingTransfer(CHANNEL_ID, incomingIdempotencyKey,
+                        requestHash);
             }
 
             if (existingTransferOptional.isPresent()) {
@@ -89,7 +93,8 @@ public class CreateTransferService {
 
                 Map<String, Object> duplicatePayload = new LinkedHashMap<>();
                 duplicatePayload.put("transferRef", existingTransfer.getTransferRef());
-                duplicatePayload.put("status", existingTransfer.getStatus() == null ? null : existingTransfer.getStatus().name());
+                duplicatePayload.put("status",
+                        existingTransfer.getStatus() == null ? null : existingTransfer.getStatus().name());
                 duplicatePayload.put("idempotencyKey", incomingIdempotencyKey);
                 duplicatePayload.put("inquiryRef", resolvedInquiryRef);
 
@@ -98,14 +103,12 @@ public class CreateTransferService {
                         "TRANSFER",
                         existingTransfer.getTransferRef(),
                         CHANNEL_ID,
-                        duplicatePayload
-                );
+                        duplicatePayload);
 
                 return new CreateTransferResponse(
                         existingTransfer.getTransferRef(),
                         existingTransfer.getStatus() == null ? null : existingTransfer.getStatus().name(),
-                        "Duplicate request returned existing transfer"
-                );
+                        "Duplicate request returned existing transfer");
             }
 
             InquiryEntity inquiry = inquiryRepository.findByInquiryRef(resolvedInquiryRef)
@@ -113,14 +116,13 @@ public class CreateTransferService {
 
             validateEligibleInquiry(inquiry, request);
 
-            Optional<TransferEntity> existingTransferByInquiry =
-                    transferRepository.findByInquiryRef(resolvedInquiryRef);
+            Optional<TransferEntity> existingTransferByInquiry = transferRepository
+                    .findByInquiryRef(resolvedInquiryRef);
 
             if (existingTransferByInquiry.isPresent()) {
                 throw new InquiryAlreadyUsedException(
                         "Inquiry already used by transfer: " +
-                        existingTransferByInquiry.get().getTransferRef()
-                );
+                                existingTransferByInquiry.get().getTransferRef());
             }
 
             Map<String, Object> validatedPayload = new LinkedHashMap<>();
@@ -136,8 +138,7 @@ public class CreateTransferService {
                     "TRANSFER",
                     null,
                     CHANNEL_ID,
-                    validatedPayload
-            );
+                    validatedPayload);
 
             transferRef = transferRefGenerator.generate();
             LocalDateTime now = LocalDateTime.now();
@@ -189,8 +190,7 @@ public class CreateTransferService {
                     idempotencyKey,
                     requestHash,
                     transferRef,
-                    TransferStatus.RECEIVED.name()
-            );
+                    TransferStatus.RECEIVED.name());
 
             Map<String, Object> createdPayload = new LinkedHashMap<>();
             createdPayload.put("transferRef", transferRef);
@@ -203,16 +203,30 @@ public class CreateTransferService {
             createdPayload.put("currency", request.getCurrency());
             createdPayload.put("idempotencyKey", idempotencyKey);
 
+            IsoMessageEntity pacs008Message = isoMessageService.createEncryptedOutboundPacs008(transfer);
+
+            Map<String, Object> isoPayload = new LinkedHashMap<>();
+            isoPayload.put("isoMessageId", pacs008Message.getId());
+            isoPayload.put("messageType", pacs008Message.getMessageType().name());
+            isoPayload.put("direction", pacs008Message.getDirection().name());
+            isoPayload.put("messageId", pacs008Message.getMessageId());
+            isoPayload.put("endToEndId", pacs008Message.getEndToEndId());
+            isoPayload.put("securityStatus", pacs008Message.getSecurityStatus().name());
+            isoPayload.put("plainPayloadPresent", pacs008Message.getPlainPayload() != null);
+            isoPayload.put("encryptedPayloadPresent", pacs008Message.getEncryptedPayload() != null);
+            isoPayload.put("transferRef", transferRef);
+            isoPayload.put("inquiryRef", inquiryRef);
+
             auditLogService.log(
-                    "TRANSFER_CREATED",
+                    "ISO_PACS008_ENCRYPTED_CREATED",
                     "TRANSFER",
                     transferRef,
                     CHANNEL_ID,
-                    createdPayload
-            );
+                    isoPayload);
 
             DispatchTransferCommand command = new DispatchTransferCommand(
                     transferRef,
+                    pacs008Message.getId(),
                     request.getSourceBank(),
                     request.getDebtorAccount(),
                     request.getDestinationBank(),
@@ -220,30 +234,29 @@ public class CreateTransferService {
                     request.getAmount(),
                     request.getCurrency(),
                     inquiry.getConnectorName(),
-                    inquiry.getRouteCode()
-            );
-
+                    inquiry.getRouteCode());
             outboxTransactionService.enqueueTransferDispatch(command);
 
             Map<String, Object> queuedPayload = new LinkedHashMap<>();
             queuedPayload.put("transferRef", transferRef);
-            queuedPayload.put("messageType", "TRANSFER_DISPATCH");
-            queuedPayload.put("connectorName", inquiry.getConnectorName());
-            queuedPayload.put("routeCode", inquiry.getRouteCode());
+            queuedPayload.put("inquiryRef", inquiryRef);
+            queuedPayload.put("outboxMessageType", "TRANSFER_DISPATCH");
+            queuedPayload.put("isoMessageId", pacs008Message.getId());
+            queuedPayload.put("isoMessageType", pacs008Message.getMessageType().name());
+            queuedPayload.put("isoSecurityStatus", pacs008Message.getSecurityStatus().name());
+            queuedPayload.put("isoEncryptedPayloadPresent", pacs008Message.getEncryptedPayload() != null);
 
             auditLogService.log(
                     "TRANSFER_QUEUED_FOR_DISPATCH",
                     "TRANSFER",
                     transferRef,
                     CHANNEL_ID,
-                    queuedPayload
-            );
+                    queuedPayload);
 
             return new CreateTransferResponse(
                     transferRef,
                     TransferStatus.RECEIVED.name(),
-                    "Transfer request accepted and queued for dispatch"
-            );
+                    "Transfer request accepted and queued for dispatch");
 
         } catch (Exception ex) {
             auditLogService.logError(
@@ -251,8 +264,7 @@ public class CreateTransferService {
                     "TRANSFER",
                     transferRef,
                     CHANNEL_ID,
-                    ex
-            );
+                    ex);
             throw ex;
         }
     }

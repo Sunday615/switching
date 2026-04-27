@@ -1,13 +1,14 @@
 .
+├── Dockerfile
 ├── boot.log
 ├── docker-compose.yml
-├── Dockerfile
 ├── docs
 │   └── diagrams
 │       └── switching-kafka-iso20022-flow-english.png
 ├── mvnw
 ├── mvnw.cmd
 ├── pom.xml
+├── run-error.log
 ├── scripts
 │   └── generate_switching_kafka_flowchart.py
 ├── src
@@ -16,16 +17,34 @@
 │   │   │   └── com
 │   │   │       └── example
 │   │   │           └── switching
+│   │   │               ├── SwitchingApplication.java
 │   │   │               ├── audit
+│   │   │               │   ├── controller
+│   │   │               │   │   └── AuditLogController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── AuditLogItemResponse.java
+│   │   │               │   │   └── AuditLogListResponse.java
 │   │   │               │   ├── entity
 │   │   │               │   │   └── AuditLogEntity.java
 │   │   │               │   ├── repository
-│   │   │               │   │   └── AuditLogRepository.java
+│   │   │               │   │   ├── AuditLogRepository.java
+│   │   │               │   │   └── AuditLogSearchRow.java
 │   │   │               │   └── service
+│   │   │               │       ├── AuditLogQueryService.java
 │   │   │               │       └── AuditLogService.java
 │   │   │               ├── common
+│   │   │               │   ├── dto
+│   │   │               │   │   └── ApiErrorResponse.java
+│   │   │               │   ├── error
+│   │   │               │   │   ├── ErrorCatalog.java
+│   │   │               │   │   ├── ErrorCategory.java
+│   │   │               │   │   ├── ErrorClassifier.java
+│   │   │               │   │   ├── ErrorLayer.java
+│   │   │               │   │   └── ErrorPhase.java
 │   │   │               │   ├── exception
 │   │   │               │   │   └── GlobalExceptionHandler.java
+│   │   │               │   ├── filter
+│   │   │               │   │   └── RequestIdFilter.java
 │   │   │               │   └── util
 │   │   │               │       ├── RequestHashUtil.java
 │   │   │               │       └── TransferRefGenerator.java
@@ -38,6 +57,14 @@
 │   │   │               ├── connector
 │   │   │               │   ├── BankConnector.java
 │   │   │               │   └── MockBankConnector.java
+│   │   │               ├── dashboard
+│   │   │               │   ├── controller
+│   │   │               │   │   └── DashboardController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── DashboardOverviewResponse.java
+│   │   │               │   │   └── StatusCountResponse.java
+│   │   │               │   └── service
+│   │   │               │       └── DashboardOverviewService.java
 │   │   │               ├── demo
 │   │   │               │   ├── controller
 │   │   │               │   │   └── DemoFlowController.java
@@ -58,12 +85,15 @@
 │   │   │               │       └── IdempotencyService.java
 │   │   │               ├── inquiry
 │   │   │               │   ├── controller
-│   │   │               │   │   └── InquiryController.java
+│   │   │               │   │   ├── InquiryController.java
+│   │   │               │   │   └── InquiryTransferController.java
 │   │   │               │   ├── dto
 │   │   │               │   │   ├── CreateInquiryRequest.java
 │   │   │               │   │   ├── CreateInquiryResponse.java
 │   │   │               │   │   ├── InquiryResponse.java
-│   │   │               │   │   └── InquiryStatusHistoryItemResponse.java
+│   │   │               │   │   ├── InquiryStatusHistoryItemResponse.java
+│   │   │               │   │   ├── InquiryTransferItemResponse.java
+│   │   │               │   │   └── InquiryTransfersResponse.java
 │   │   │               │   ├── entity
 │   │   │               │   │   ├── InquiryEntity.java
 │   │   │               │   │   └── InquiryStatusHistoryEntity.java
@@ -76,33 +106,73 @@
 │   │   │               │   │   └── InquiryStatusHistoryRepository.java
 │   │   │               │   └── service
 │   │   │               │       ├── CreateInquiryService.java
-│   │   │               │       └── InquiryLookupService.java
+│   │   │               │       ├── InquiryLookupService.java
+│   │   │               │       └── InquiryTransferQueryService.java
 │   │   │               ├── iso
 │   │   │               │   ├── controller
-│   │   │               │   │   └── IsoMessageController.java
+│   │   │               │   │   ├── IsoMessageController.java
+│   │   │               │   │   └── IsoMessageSecurityController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── IsoMessageDetailResponse.java
+│   │   │               │   │   ├── IsoMessageItemResponse.java
+│   │   │               │   │   ├── IsoMessageListResponse.java
+│   │   │               │   │   └── IsoMessageSecurityActionResponse.java
+│   │   │               │   ├── entity
+│   │   │               │   │   └── IsoMessageEntity.java
+│   │   │               │   ├── enums
+│   │   │               │   │   ├── IsoMessageDirection.java
+│   │   │               │   │   ├── IsoMessageType.java
+│   │   │               │   │   ├── IsoSecurityStatus.java
+│   │   │               │   │   └── IsoValidationStatus.java
+│   │   │               │   ├── exception
+│   │   │               │   │   ├── IsoMessageCryptoException.java
+│   │   │               │   │   ├── IsoMessageInvalidStateException.java
+│   │   │               │   │   └── IsoMessageNotFoundException.java
 │   │   │               │   ├── mapper
 │   │   │               │   │   ├── Pacs002Mapper.java
 │   │   │               │   │   ├── Pacs008Mapper.java
+│   │   │               │   │   ├── Pacs008XmlBuilder.java
 │   │   │               │   │   └── Pacs028Mapper.java
 │   │   │               │   ├── parser
 │   │   │               │   │   ├── IsoXmlParser.java
 │   │   │               │   │   └── IsoXmlValidator.java
+│   │   │               │   ├── reposentory
+│   │   │               │   ├── repository
+│   │   │               │   │   └── IsoMessageRepository.java
+│   │   │               │   ├── security
+│   │   │               │   │   ├── IsoMessageCryptoService.java
+│   │   │               │   │   └── IsoMessageSecurityService.java
 │   │   │               │   └── service
+│   │   │               │       ├── IsoMessageQueryService.java
 │   │   │               │       └── IsoMessageService.java
 │   │   │               ├── outbox
+│   │   │               │   ├── controller
+│   │   │               │   │   ├── OutboxEventController.java
+│   │   │               │   │   └── OutboxManualRetryController.java
 │   │   │               │   ├── dto
 │   │   │               │   │   ├── BankDispatchResult.java
-│   │   │               │   │   └── DispatchTransferCommand.java
+│   │   │               │   │   ├── DispatchTransferCommand.java
+│   │   │               │   │   ├── OutboxEventItemResponse.java
+│   │   │               │   │   ├── OutboxEventListResponse.java
+│   │   │               │   │   └── OutboxManualRetryResponse.java
 │   │   │               │   ├── entity
 │   │   │               │   │   └── OutboxEventEntity.java
 │   │   │               │   ├── enums
 │   │   │               │   │   └── OutboxStatus.java
+│   │   │               │   ├── exception
+│   │   │               │   │   ├── OutboxEventNotFoundException.java
+│   │   │               │   │   └── OutboxManualRetryNotAllowedException.java
 │   │   │               │   ├── repository
 │   │   │               │   │   └── OutboxEventRepository.java
 │   │   │               │   ├── service
+│   │   │               │   │   ├── OutboxEventQueryService.java
+│   │   │               │   │   ├── OutboxManualRetryService.java
+│   │   │               │   │   ├── OutboxProcessorService.java
+│   │   │               │   │   ├── OutboxRecoveryService.java
 │   │   │               │   │   └── OutboxTransactionService.java
 │   │   │               │   └── worker
-│   │   │               │       └── OutboxDispatchWorker.java
+│   │   │               │       ├── OutboxDispatchWorker.java
+│   │   │               │       └── OutboxRecoveryWorker.java
 │   │   │               ├── participant
 │   │   │               │   ├── entity
 │   │   │               │   │   └── ParticipantBankEntity.java
@@ -117,22 +187,30 @@
 │   │   │               │   │   └── RoutingRuleRepository.java
 │   │   │               │   └── service
 │   │   │               │       └── RoutingService.java
-│   │   │               ├── SwitchingApplication.java
 │   │   │               └── transfer
 │   │   │                   ├── controller
 │   │   │                   │   ├── TransferController.java
-│   │   │                   │   └── TransferInquiryController.java
+│   │   │                   │   ├── TransferInquiryController.java
+│   │   │                   │   ├── TransferListController.java
+│   │   │                   │   └── TransferTraceController.java
 │   │   │                   ├── dto
 │   │   │                   │   ├── CreateTransferRequest.java
 │   │   │                   │   ├── CreateTransferResponse.java
 │   │   │                   │   ├── TransferInquiryResponse.java
-│   │   │                   │   └── TransferStatusHistoryItemResponse.java
+│   │   │                   │   ├── TransferListItemResponse.java
+│   │   │                   │   ├── TransferListResponse.java
+│   │   │                   │   ├── TransferStatusHistoryItemResponse.java
+│   │   │                   │   ├── TransferTraceAuditItemResponse.java
+│   │   │                   │   ├── TransferTraceHistoryItemResponse.java
+│   │   │                   │   ├── TransferTraceOutboxItemResponse.java
+│   │   │                   │   └── TransferTraceResponse.java
 │   │   │                   ├── entity
 │   │   │                   │   ├── TransferEntity.java
 │   │   │                   │   └── TransferStatusHistoryEntity.java
 │   │   │                   ├── enums
 │   │   │                   │   └── TransferStatus.java
 │   │   │                   ├── exception
+│   │   │                   │   ├── InquiryAlreadyUsedException.java
 │   │   │                   │   ├── InquiryValidationException.java
 │   │   │                   │   └── TransferNotFoundException.java
 │   │   │                   ├── repository
@@ -140,7 +218,9 @@
 │   │   │                   │   └── TransferStatusHistoryRepository.java
 │   │   │                   └── service
 │   │   │                       ├── CreateTransferService.java
-│   │   │                       └── TransferInquiryService.java
+│   │   │                       ├── TransferInquiryService.java
+│   │   │                       ├── TransferListService.java
+│   │   │                       └── TransferTraceService.java
 │   │   └── resources
 │   │       ├── application.properties
 │   │       ├── application.yml
@@ -148,7 +228,11 @@
 │   │       │   └── migration
 │   │       │       ├── V1__init_switching_tables.sql
 │   │       │       ├── V2__seed_bank_and_routing.sql
-│   │       │       └── V3__add_inquiry_tables.sql
+│   │       │       ├── V3__add_inquiry_tables.sql
+│   │       │       ├── V4__add_unique_constraint_transfers_inquiry_ref.sql
+│   │       │       ├── V5__add_updated_at_to_outbox_events.sql
+│   │       │       ├── V6__create_iso_messages.sql
+│   │       │       └── V7__add_updated_at_to_idempotency_records.sql
 │   │       └── static
 │   │           └── index.html
 │   └── test
@@ -157,7 +241,7 @@
 │               └── example
 │                   └── switching
 │                       └── SwitchingApplicationTests.java
-├── structure.txt
+├── strucuture.txt
 └── target
     ├── classes
     │   ├── application.properties
@@ -165,16 +249,34 @@
     │   ├── com
     │   │   └── example
     │   │       └── switching
+    │   │           ├── SwitchingApplication.class
     │   │           ├── audit
+    │   │           │   ├── controller
+    │   │           │   │   └── AuditLogController.class
+    │   │           │   ├── dto
+    │   │           │   │   ├── AuditLogItemResponse.class
+    │   │           │   │   └── AuditLogListResponse.class
     │   │           │   ├── entity
     │   │           │   │   └── AuditLogEntity.class
     │   │           │   ├── repository
-    │   │           │   │   └── AuditLogRepository.class
+    │   │           │   │   ├── AuditLogRepository.class
+    │   │           │   │   └── AuditLogSearchRow.class
     │   │           │   └── service
+    │   │           │       ├── AuditLogQueryService.class
     │   │           │       └── AuditLogService.class
     │   │           ├── common
+    │   │           │   ├── dto
+    │   │           │   │   └── ApiErrorResponse.class
+    │   │           │   ├── error
+    │   │           │   │   ├── ErrorCatalog.class
+    │   │           │   │   ├── ErrorCategory.class
+    │   │           │   │   ├── ErrorClassifier.class
+    │   │           │   │   ├── ErrorLayer.class
+    │   │           │   │   └── ErrorPhase.class
     │   │           │   ├── exception
     │   │           │   │   └── GlobalExceptionHandler.class
+    │   │           │   ├── filter
+    │   │           │   │   └── RequestIdFilter.class
     │   │           │   └── util
     │   │           │       ├── RequestHashUtil.class
     │   │           │       └── TransferRefGenerator.class
@@ -187,6 +289,14 @@
     │   │           ├── connector
     │   │           │   ├── BankConnector.class
     │   │           │   └── MockBankConnector.class
+    │   │           ├── dashboard
+    │   │           │   ├── controller
+    │   │           │   │   └── DashboardController.class
+    │   │           │   ├── dto
+    │   │           │   │   ├── DashboardOverviewResponse.class
+    │   │           │   │   └── StatusCountResponse.class
+    │   │           │   └── service
+    │   │           │       └── DashboardOverviewService.class
     │   │           ├── demo
     │   │           │   ├── controller
     │   │           │   │   └── DemoFlowController.class
@@ -207,12 +317,15 @@
     │   │           │       └── IdempotencyService.class
     │   │           ├── inquiry
     │   │           │   ├── controller
-    │   │           │   │   └── InquiryController.class
+    │   │           │   │   ├── InquiryController.class
+    │   │           │   │   └── InquiryTransferController.class
     │   │           │   ├── dto
     │   │           │   │   ├── CreateInquiryRequest.class
     │   │           │   │   ├── CreateInquiryResponse.class
     │   │           │   │   ├── InquiryResponse.class
-    │   │           │   │   └── InquiryStatusHistoryItemResponse.class
+    │   │           │   │   ├── InquiryStatusHistoryItemResponse.class
+    │   │           │   │   ├── InquiryTransferItemResponse.class
+    │   │           │   │   └── InquiryTransfersResponse.class
     │   │           │   ├── entity
     │   │           │   │   ├── InquiryEntity.class
     │   │           │   │   └── InquiryStatusHistoryEntity.class
@@ -225,33 +338,72 @@
     │   │           │   │   └── InquiryStatusHistoryRepository.class
     │   │           │   └── service
     │   │           │       ├── CreateInquiryService.class
-    │   │           │       └── InquiryLookupService.class
+    │   │           │       ├── InquiryLookupService.class
+    │   │           │       └── InquiryTransferQueryService.class
     │   │           ├── iso
     │   │           │   ├── controller
-    │   │           │   │   └── IsoMessageController.class
+    │   │           │   │   ├── IsoMessageController.class
+    │   │           │   │   └── IsoMessageSecurityController.class
+    │   │           │   ├── dto
+    │   │           │   │   ├── IsoMessageDetailResponse.class
+    │   │           │   │   ├── IsoMessageItemResponse.class
+    │   │           │   │   ├── IsoMessageListResponse.class
+    │   │           │   │   └── IsoMessageSecurityActionResponse.class
+    │   │           │   ├── entity
+    │   │           │   │   └── IsoMessageEntity.class
+    │   │           │   ├── enums
+    │   │           │   │   ├── IsoMessageDirection.class
+    │   │           │   │   ├── IsoMessageType.class
+    │   │           │   │   ├── IsoSecurityStatus.class
+    │   │           │   │   └── IsoValidationStatus.class
+    │   │           │   ├── exception
+    │   │           │   │   ├── IsoMessageCryptoException.class
+    │   │           │   │   ├── IsoMessageInvalidStateException.class
+    │   │           │   │   └── IsoMessageNotFoundException.class
     │   │           │   ├── mapper
     │   │           │   │   ├── Pacs002Mapper.class
     │   │           │   │   ├── Pacs008Mapper.class
+    │   │           │   │   ├── Pacs008XmlBuilder.class
     │   │           │   │   └── Pacs028Mapper.class
     │   │           │   ├── parser
     │   │           │   │   ├── IsoXmlParser.class
     │   │           │   │   └── IsoXmlValidator.class
+    │   │           │   ├── repository
+    │   │           │   │   └── IsoMessageRepository.class
+    │   │           │   ├── security
+    │   │           │   │   └── IsoMessageCryptoService.class
     │   │           │   └── service
+    │   │           │       ├── IsoMessageQueryService.class
+    │   │           │       ├── IsoMessageSecurityService.class
     │   │           │       └── IsoMessageService.class
     │   │           ├── outbox
+    │   │           │   ├── controller
+    │   │           │   │   ├── OutboxEventController.class
+    │   │           │   │   └── OutboxManualRetryController.class
     │   │           │   ├── dto
     │   │           │   │   ├── BankDispatchResult.class
-    │   │           │   │   └── DispatchTransferCommand.class
+    │   │           │   │   ├── DispatchTransferCommand.class
+    │   │           │   │   ├── OutboxEventItemResponse.class
+    │   │           │   │   ├── OutboxEventListResponse.class
+    │   │           │   │   └── OutboxManualRetryResponse.class
     │   │           │   ├── entity
     │   │           │   │   └── OutboxEventEntity.class
     │   │           │   ├── enums
     │   │           │   │   └── OutboxStatus.class
+    │   │           │   ├── exception
+    │   │           │   │   ├── OutboxEventNotFoundException.class
+    │   │           │   │   └── OutboxManualRetryNotAllowedException.class
     │   │           │   ├── repository
     │   │           │   │   └── OutboxEventRepository.class
     │   │           │   ├── service
+    │   │           │   │   ├── OutboxEventQueryService.class
+    │   │           │   │   ├── OutboxManualRetryService.class
+    │   │           │   │   ├── OutboxProcessorService.class
+    │   │           │   │   ├── OutboxRecoveryService.class
     │   │           │   │   └── OutboxTransactionService.class
     │   │           │   └── worker
-    │   │           │       └── OutboxDispatchWorker.class
+    │   │           │       ├── OutboxDispatchWorker.class
+    │   │           │       └── OutboxRecoveryWorker.class
     │   │           ├── participant
     │   │           │   ├── entity
     │   │           │   │   └── ParticipantBankEntity.class
@@ -266,22 +418,30 @@
     │   │           │   │   └── RoutingRuleRepository.class
     │   │           │   └── service
     │   │           │       └── RoutingService.class
-    │   │           ├── SwitchingApplication.class
     │   │           └── transfer
     │   │               ├── controller
     │   │               │   ├── TransferController.class
-    │   │               │   └── TransferInquiryController.class
+    │   │               │   ├── TransferInquiryController.class
+    │   │               │   ├── TransferListController.class
+    │   │               │   └── TransferTraceController.class
     │   │               ├── dto
     │   │               │   ├── CreateTransferRequest.class
     │   │               │   ├── CreateTransferResponse.class
     │   │               │   ├── TransferInquiryResponse.class
-    │   │               │   └── TransferStatusHistoryItemResponse.class
+    │   │               │   ├── TransferListItemResponse.class
+    │   │               │   ├── TransferListResponse.class
+    │   │               │   ├── TransferStatusHistoryItemResponse.class
+    │   │               │   ├── TransferTraceAuditItemResponse.class
+    │   │               │   ├── TransferTraceHistoryItemResponse.class
+    │   │               │   ├── TransferTraceOutboxItemResponse.class
+    │   │               │   └── TransferTraceResponse.class
     │   │               ├── entity
     │   │               │   ├── TransferEntity.class
     │   │               │   └── TransferStatusHistoryEntity.class
     │   │               ├── enums
     │   │               │   └── TransferStatus.class
     │   │               ├── exception
+    │   │               │   ├── InquiryAlreadyUsedException.class
     │   │               │   ├── InquiryValidationException.class
     │   │               │   └── TransferNotFoundException.class
     │   │               ├── repository
@@ -289,12 +449,18 @@
     │   │               │   └── TransferStatusHistoryRepository.class
     │   │               └── service
     │   │                   ├── CreateTransferService.class
-    │   │                   └── TransferInquiryService.class
+    │   │                   ├── TransferInquiryService.class
+    │   │                   ├── TransferListService.class
+    │   │                   └── TransferTraceService.class
     │   ├── db
     │   │   └── migration
     │   │       ├── V1__init_switching_tables.sql
     │   │       ├── V2__seed_bank_and_routing.sql
-    │   │       └── V3__add_inquiry_tables.sql
+    │   │       ├── V3__add_inquiry_tables.sql
+    │   │       ├── V4__add_unique_constraint_transfers_inquiry_ref.sql
+    │   │       ├── V5__add_updated_at_to_outbox_events.sql
+    │   │       ├── V6__create_iso_messages.sql
+    │   │       └── V7__add_updated_at_to_idempotency_records.sql
     │   └── static
     │       └── index.html
     ├── generated-sources
@@ -317,4 +483,4 @@
                 └── switching
                     └── SwitchingApplicationTests.class
 
-149 directories, 169 files
+184 directories, 300 files

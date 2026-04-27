@@ -13,29 +13,40 @@ public class DispatchTransferCommand {
     private String currency;
     private String connectorName;
     private String routeCode;
+    private Long isoMessageId;
+
+    public Long getIsoMessageId() {
+        return isoMessageId;
+    }
+
+    public void setIsoMessageId(Long isoMessageId) {
+        this.isoMessageId = isoMessageId;
+    }
 
     public DispatchTransferCommand() {
     }
 
     public DispatchTransferCommand(String transferRef,
-                                   String sourceBank,
-                                   String debtorAccount,
-                                   String destinationBank,
-                                   String creditorAccount,
-                                   BigDecimal amount,
-                                   String currency,
-                                   String connectorName,
-                                   String routeCode) {
-        this.transferRef = transferRef;
-        this.sourceBank = sourceBank;
-        this.debtorAccount = debtorAccount;
-        this.destinationBank = destinationBank;
-        this.creditorAccount = creditorAccount;
-        this.amount = amount;
-        this.currency = currency;
-        this.connectorName = connectorName;
-        this.routeCode = routeCode;
-    }
+                               Long isoMessageId,
+                               String sourceBank,
+                               String debtorAccount,
+                               String destinationBank,
+                               String creditorAccount,
+                               BigDecimal amount,
+                               String currency,
+                               String connectorName,
+                               String routeCode) {
+    this.transferRef = transferRef;
+    this.isoMessageId = isoMessageId;
+    this.sourceBank = sourceBank;
+    this.debtorAccount = debtorAccount;
+    this.destinationBank = destinationBank;
+    this.creditorAccount = creditorAccount;
+    this.amount = amount;
+    this.currency = currency;
+    this.connectorName = connectorName;
+    this.routeCode = routeCode;
+}
 
     public String getTransferRef() {
         return transferRef;
