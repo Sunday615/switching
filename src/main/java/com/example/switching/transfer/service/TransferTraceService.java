@@ -5,8 +5,8 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.example.switching.audit.entity.AuditLogEntity;
 import com.example.switching.audit.repository.AuditLogRepository;
+import com.example.switching.audit.repository.AuditLogSearchRow;
 import com.example.switching.inquiry.entity.InquiryEntity;
 import com.example.switching.inquiry.repository.InquiryRepository;
 import com.example.switching.outbox.entity.OutboxEventEntity;
@@ -33,10 +33,10 @@ public class TransferTraceService {
     private final AuditLogRepository auditLogRepository;
 
     public TransferTraceService(TransferRepository transferRepository,
-                                InquiryRepository inquiryRepository,
-                                TransferStatusHistoryRepository transferStatusHistoryRepository,
-                                OutboxEventRepository outboxEventRepository,
-                                AuditLogRepository auditLogRepository) {
+            InquiryRepository inquiryRepository,
+            TransferStatusHistoryRepository transferStatusHistoryRepository,
+            OutboxEventRepository outboxEventRepository,
+            AuditLogRepository auditLogRepository) {
         this.transferRepository = transferRepository;
         this.inquiryRepository = inquiryRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
@@ -56,14 +56,15 @@ public class TransferTraceService {
             inquiry = inquiryRepository.findByInquiryRef(transfer.getInquiryRef()).orElse(null);
         }
 
-        List<TransferStatusHistoryEntity> histories =
-                transferStatusHistoryRepository.findAllByTransferRefOrderByIdAsc(resolvedTransferRef);
+        List<TransferStatusHistoryEntity> histories = transferStatusHistoryRepository
+                .findAllByTransferRefOrderByIdAsc(resolvedTransferRef);
 
-        List<OutboxEventEntity> outboxEvents =
-                outboxEventRepository.findAllByTransferRefOrderByIdAsc(resolvedTransferRef);
+        List<OutboxEventEntity> outboxEvents = outboxEventRepository
+                .findAllByTransferRefOrderByIdAsc(resolvedTransferRef);
 
-       List<AuditLogEntity> auditLogs =
-        auditLogRepository.findTop100ByOrderByIdDesc();
+        List<AuditLogSearchRow> auditLogs = auditLogRepository.findTraceAuditLogs(
+                ENTITY_TYPE_TRANSFER,
+                resolvedTransferRef);
 
         TransferTraceResponse response = new TransferTraceResponse();
 
@@ -110,8 +111,7 @@ public class TransferTraceService {
         return new TransferTraceHistoryItemResponse(
                 history.getStatus(),
                 history.getReasonCode(),
-                history.getCreatedAt()
-        );
+                history.getCreatedAt());
     }
 
     private TransferTraceOutboxItemResponse toOutboxItem(OutboxEventEntity event) {
@@ -120,17 +120,16 @@ public class TransferTraceService {
                 event.getMessageType(),
                 event.getStatus() == null ? null : event.getStatus().name(),
                 event.getRetryCount(),
-                event.getCreatedAt()
-        );
+                event.getCreatedAt());
     }
 
-  private TransferTraceAuditItemResponse toAuditItem(AuditLogEntity auditLog) {
+  private TransferTraceAuditItemResponse toAuditItem(AuditLogSearchRow auditLog) {
     return new TransferTraceAuditItemResponse(
             auditLog.getId(),
             auditLog.getEventType(),
-            null,
-            null,
-            null,
+            auditLog.getReferenceType(),
+            auditLog.getReferenceId(),
+            auditLog.getActor(),
             auditLog.getCreatedAt()
     );
 }
