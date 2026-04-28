@@ -12,4 +12,5 @@ public interface TransferStatusHistoryRepository extends JpaRepository<TransferS
 
     List<TransferStatusHistoryEntity> findByTransferRefOrderByCreatedAtAsc(String transferRef);
     List<TransferStatusHistoryEntity> findAllByTransferRefOrderByIdAsc(String transferRef);
+    
 }

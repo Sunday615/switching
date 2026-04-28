@@ -41,8 +41,7 @@ public class OutboxIsoMessageDispatchService {
             BankConnector bankConnector,
             Pacs002Parser pacs002Parser,
             InboundPacs002MessageService inboundPacs002MessageService,
-            AuditLogService auditLogService
-    ) {
+            AuditLogService auditLogService) {
         this.objectMapper = objectMapper;
         this.isoMessageRepository = isoMessageRepository;
         this.bankConnector = bankConnector;
@@ -57,8 +56,11 @@ public class OutboxIsoMessageDispatchService {
 
             String transferRef = requiredText(payload, "transferRef");
             Long isoMessageId = requiredLong(payload, "isoMessageId");
-            String sourceBank = optionalText(payload, "sourceBank");
+            String sourceBank = requiredText(payload, "sourceBank");
             String destinationBank = requiredText(payload, "destinationBank");
+            String messageType = requiredText(payload, "messageType");
+            String routeCode = requiredText(payload, "routeCode");
+            String connectorName = requiredText(payload, "connectorName");
 
             IsoMessageEntity outboundPacs008 = isoMessageRepository.findById(isoMessageId)
                     .orElseThrow(() -> new IsoMessageNotFoundException(String.valueOf(isoMessageId)));
@@ -68,8 +70,11 @@ public class OutboxIsoMessageDispatchService {
             logIsoDispatchStarted(
                     transferRef,
                     outboundPacs008,
-                    destinationBank
-            );
+                    sourceBank,
+                    destinationBank,
+                    messageType,
+                    routeCode,
+                    connectorName);
 
             DispatchIsoMessageCommand command = new DispatchIsoMessageCommand(
                     transferRef,
@@ -79,11 +84,10 @@ public class OutboxIsoMessageDispatchService {
                     String.valueOf(outboundPacs008.getMessageType()),
                     sourceBank,
                     destinationBank,
-                    outboundPacs008.getEncryptedPayload()
-            );
+                    connectorName,
+                    outboundPacs008.getEncryptedPayload());
 
-            BankIsoDispatchResponse bankResponse =
-                    bankConnector.dispatchIsoMessageWithPacs002(command);
+            BankIsoDispatchResponse bankResponse = bankConnector.dispatchIsoMessageWithPacs002(command);
 
             if (bankResponse == null) {
                 return new BankDispatchResult(
@@ -91,40 +95,38 @@ public class OutboxIsoMessageDispatchService {
                         null,
                         null,
                         "PACS002-NULL",
-                        "BankConnector returned null PACS.002 response"
-                );
+                        "BankConnector returned null PACS.002 response");
             }
 
             logPacs002ResponseReceived(
                     transferRef,
                     outboundPacs008,
-                    bankResponse
-            );
+                    routeCode,
+                    connectorName,
+                    bankResponse);
 
-      
             if (StringUtils.hasText(bankResponse.pacs002Xml())) {
-                Pacs002ParseResult pacs002 =
-                        pacs002Parser.parse(bankResponse.pacs002Xml());
+                Pacs002ParseResult pacs002 = pacs002Parser.parse(bankResponse.pacs002Xml());
 
-                IsoMessageEntity inboundPacs002 =
-                        inboundPacs002MessageService.saveInboundPacs002(
-                                outboundPacs008,
-                                pacs002,
-                                bankResponse.pacs002Xml()
-                        );
+                IsoMessageEntity inboundPacs002 = inboundPacs002MessageService.saveInboundPacs002(
+                        outboundPacs008,
+                        pacs002,
+                        bankResponse.pacs002Xml());
 
                 logPacs002InboundSaved(
                         transferRef,
                         inboundPacs002,
                         pacs002,
-                        bankResponse.externalReference()
-                );
+                        routeCode,
+                        connectorName,
+                        bankResponse.externalReference());
 
                 logPacs002Parsed(
                         transferRef,
                         inboundPacs002,
-                        pacs002
-                );
+                        pacs002,
+                        routeCode,
+                        connectorName);
 
                 if (pacs002.accepted()) {
                     return new BankDispatchResult(
@@ -132,8 +134,7 @@ public class OutboxIsoMessageDispatchService {
                             bankResponse.externalReference(),
                             "PACS.002 accepted with TxSts=" + pacs002.transactionStatus(),
                             null,
-                            null
-                    );
+                            null);
                 }
 
                 if (pacs002.rejected()) {
@@ -145,8 +146,7 @@ public class OutboxIsoMessageDispatchService {
                             "PACS.002 rejected. reasonCode="
                                     + pacs002.reasonCode()
                                     + ", reasonMessage="
-                                    + pacs002.reasonMessage()
-                    );
+                                    + pacs002.reasonMessage());
                 }
 
                 return new BankDispatchResult(
@@ -154,23 +154,16 @@ public class OutboxIsoMessageDispatchService {
                         bankResponse.externalReference(),
                         null,
                         "PACS002-UNKNOWN",
-                        "Unsupported PACS.002 TxSts=" + pacs002.transactionStatus()
-                );
+                        "Unsupported PACS.002 TxSts=" + pacs002.transactionStatus());
             }
 
-            /*
-             * ถ้าไม่มี PACS.002 XML กลับมา
-             * - ถ้า bankResponse.success = true ถือว่า response ไม่สมบูรณ์
-             * - ถ้า bankResponse.success = false ถือว่าเป็น downstream failure ปกติ
-             */
             if (bankResponse.success()) {
                 return new BankDispatchResult(
                         false,
                         bankResponse.externalReference(),
                         null,
                         "PACS002-001",
-                        "Bank response success but PACS.002 XML is empty"
-                );
+                        "Bank response success but PACS.002 XML is empty");
             }
 
             return new BankDispatchResult(
@@ -178,24 +171,21 @@ public class OutboxIsoMessageDispatchService {
                     bankResponse.externalReference(),
                     null,
                     bankResponse.responseCode(),
-                    bankResponse.responseMessage()
-            );
+                    bankResponse.responseMessage());
 
         } catch (IsoMessageNotFoundException | IsoMessageInvalidStateException ex) {
             throw ex;
         } catch (Exception ex) {
             throw new IllegalStateException(
                     "Failed to dispatch encrypted ISO message from outbox payload",
-                    ex
-            );
+                    ex);
         }
     }
 
     private void validateOutboundPacs008(IsoMessageEntity isoMessage, String transferRef) {
         if (!StringUtils.hasText(isoMessage.getTransferRef())) {
             throw new IsoMessageInvalidStateException(
-                    "ISO message transferRef is empty. isoMessageId=" + isoMessage.getId()
-            );
+                    "ISO message transferRef is empty. isoMessageId=" + isoMessage.getId());
         }
 
         if (!isoMessage.getTransferRef().equals(transferRef)) {
@@ -205,8 +195,7 @@ public class OutboxIsoMessageDispatchService {
                             + ", isoTransferRef="
                             + isoMessage.getTransferRef()
                             + ", outboxTransferRef="
-                            + transferRef
-            );
+                            + transferRef);
         }
 
         if (isoMessage.getSecurityStatus() != IsoSecurityStatus.ENCRYPTED) {
@@ -214,31 +203,35 @@ public class OutboxIsoMessageDispatchService {
                     "ISO message must be ENCRYPTED before dispatch. isoMessageId="
                             + isoMessage.getId()
                             + ", securityStatus="
-                            + isoMessage.getSecurityStatus()
-            );
+                            + isoMessage.getSecurityStatus());
         }
 
         if (!StringUtils.hasText(isoMessage.getEncryptedPayload())) {
             throw new IsoMessageInvalidStateException(
-                    "ISO encryptedPayload is empty. isoMessageId=" + isoMessage.getId()
-            );
+                    "ISO encryptedPayload is empty. isoMessageId=" + isoMessage.getId());
         }
     }
 
     private void logIsoDispatchStarted(
             String transferRef,
             IsoMessageEntity outboundPacs008,
-            String destinationBank
-    ) {
+            String sourceBank,
+            String destinationBank,
+            String messageType,
+            String routeCode,
+            String connectorName) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("transferRef", transferRef);
         payload.put("outboundIsoMessageId", outboundPacs008.getId());
-        payload.put("messageType", String.valueOf(outboundPacs008.getMessageType()));
+        payload.put("messageType", messageType);
         payload.put("direction", String.valueOf(outboundPacs008.getDirection()));
         payload.put("messageId", outboundPacs008.getMessageId());
         payload.put("endToEndId", outboundPacs008.getEndToEndId());
         payload.put("securityStatus", String.valueOf(outboundPacs008.getSecurityStatus()));
+        payload.put("sourceBank", sourceBank);
         payload.put("destinationBank", destinationBank);
+        payload.put("routeCode", routeCode);
+        payload.put("connectorName", connectorName);
         payload.put("encryptedPayloadPresent", StringUtils.hasText(outboundPacs008.getEncryptedPayload()));
 
         auditLogService.log(
@@ -246,19 +239,21 @@ public class OutboxIsoMessageDispatchService {
                 ENTITY_TYPE,
                 transferRef,
                 SOURCE_SYSTEM,
-                payload
-        );
+                payload);
     }
 
     private void logPacs002ResponseReceived(
             String transferRef,
             IsoMessageEntity outboundPacs008,
-            BankIsoDispatchResponse bankResponse
-    ) {
+            String routeCode,
+            String connectorName,
+            BankIsoDispatchResponse bankResponse) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("transferRef", transferRef);
         payload.put("outboundIsoMessageId", outboundPacs008.getId());
         payload.put("outboundMessageId", outboundPacs008.getMessageId());
+        payload.put("routeCode", routeCode);
+        payload.put("connectorName", connectorName);
         payload.put("responseSuccess", bankResponse.success());
         payload.put("responseCode", bankResponse.responseCode());
         payload.put("responseMessage", bankResponse.responseMessage());
@@ -271,16 +266,16 @@ public class OutboxIsoMessageDispatchService {
                 ENTITY_TYPE,
                 transferRef,
                 SOURCE_SYSTEM,
-                payload
-        );
+                payload);
     }
 
     private void logPacs002InboundSaved(
             String transferRef,
             IsoMessageEntity inboundPacs002,
             Pacs002ParseResult pacs002,
-            String externalReference
-    ) {
+            String routeCode,
+            String connectorName,
+            String externalReference) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("transferRef", transferRef);
         payload.put("inboundIsoMessageId", inboundPacs002.getId());
@@ -293,6 +288,8 @@ public class OutboxIsoMessageDispatchService {
         payload.put("originalMessageId", pacs002.originalMessageId());
         payload.put("originalEndToEndId", pacs002.originalEndToEndId());
         payload.put("originalTransactionId", pacs002.originalTransactionId());
+        payload.put("routeCode", routeCode);
+        payload.put("connectorName", connectorName);
         payload.put("externalReference", externalReference);
 
         auditLogService.log(
@@ -300,15 +297,15 @@ public class OutboxIsoMessageDispatchService {
                 ENTITY_TYPE,
                 transferRef,
                 SOURCE_SYSTEM,
-                payload
-        );
+                payload);
     }
 
     private void logPacs002Parsed(
             String transferRef,
             IsoMessageEntity inboundPacs002,
-            Pacs002ParseResult pacs002
-    ) {
+            Pacs002ParseResult pacs002,
+            String routeCode,
+            String connectorName) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("transferRef", transferRef);
         payload.put("inboundIsoMessageId", inboundPacs002.getId());
@@ -321,14 +318,15 @@ public class OutboxIsoMessageDispatchService {
         payload.put("rejected", pacs002.rejected());
         payload.put("reasonCode", pacs002.reasonCode());
         payload.put("reasonMessage", pacs002.reasonMessage());
+        payload.put("routeCode", routeCode);
+        payload.put("connectorName", connectorName);
 
         auditLogService.log(
                 "PACS002_PARSED",
                 ENTITY_TYPE,
                 transferRef,
                 SOURCE_SYSTEM,
-                payload
-        );
+                payload);
     }
 
     private String requiredText(JsonNode node, String fieldName) {
@@ -338,23 +336,7 @@ public class OutboxIsoMessageDispatchService {
             throw new IllegalArgumentException("Missing required field in outbox payload: " + fieldName);
         }
 
-        return value.asText();
-    }
-
-    private String optionalText(JsonNode node, String fieldName) {
-        JsonNode value = node.get(fieldName);
-
-        if (value == null || value.isNull()) {
-            return null;
-        }
-
-        String text = value.asText();
-
-        if (!StringUtils.hasText(text)) {
-            return null;
-        }
-
-        return text;
+        return value.asText().trim();
     }
 
     private Long requiredLong(JsonNode node, String fieldName) {

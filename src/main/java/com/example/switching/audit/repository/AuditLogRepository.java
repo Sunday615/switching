@@ -59,4 +59,8 @@ public interface AuditLogRepository extends JpaRepository<AuditLogEntity, Long> 
             @Param("referenceType") String referenceType,
             @Param("referenceId") String referenceId
     );
+    List<AuditLogEntity> findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+        String referenceType,
+        String referenceId
+);
 }

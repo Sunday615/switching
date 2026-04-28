@@ -1,6 +1,5 @@
 package com.example.switching.iso.controller;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -20,16 +19,16 @@ public class IsoMessageController {
     }
 
     @GetMapping("/api/iso-messages")
-    public ResponseEntity<IsoMessageListResponse> searchIsoMessages(
-            @RequestParam(value = "messageType", required = false) String messageType,
-            @RequestParam(value = "direction", required = false) String direction,
-            @RequestParam(value = "correlationRef", required = false) String correlationRef,
-            @RequestParam(value = "inquiryRef", required = false) String inquiryRef,
-            @RequestParam(value = "transferRef", required = false) String transferRef,
-            @RequestParam(value = "endToEndId", required = false) String endToEndId,
-            @RequestParam(value = "limit", required = false) Integer limit) {
-
-        IsoMessageListResponse response = isoMessageQueryService.search(
+    public IsoMessageListResponse search(
+            @RequestParam(required = false) String messageType,
+            @RequestParam(required = false) String direction,
+            @RequestParam(required = false) String correlationRef,
+            @RequestParam(required = false) String inquiryRef,
+            @RequestParam(required = false) String transferRef,
+            @RequestParam(required = false) String endToEndId,
+            @RequestParam(required = false) Integer limit
+    ) {
+        return isoMessageQueryService.search(
                 messageType,
                 direction,
                 correlationRef,
@@ -38,15 +37,13 @@ public class IsoMessageController {
                 endToEndId,
                 limit
         );
-
-        return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/api/iso-messages/{id}")
-    public ResponseEntity<IsoMessageDetailResponse> getIsoMessageById(
-            @PathVariable("id") Long id) {
-
-        IsoMessageDetailResponse response = isoMessageQueryService.getById(id);
-        return ResponseEntity.ok(response);
+ 
+    @GetMapping("/api/iso-messages/{messageKey}")
+    public IsoMessageDetailResponse getDetail(
+            @PathVariable String messageKey
+    ) {
+        return isoMessageQueryService.getDetail(messageKey);
     }
 }

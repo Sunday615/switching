@@ -17,6 +17,7 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEventEntity, 
         List<OutboxEventEntity> findTop20ByStatusOrderByIdAsc(OutboxStatus status);
 
         List<OutboxEventEntity> findAllByTransferRefOrderByIdAsc(String transferRef);
+        List<OutboxEventEntity> findByTransferRefOrderByCreatedAtAsc(String transferRef);
 
         long countByStatus(OutboxStatus status);
 
