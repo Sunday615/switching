@@ -9,6 +9,7 @@ import com.example.switching.outbox.dto.DispatchTransferCommand;
 
 @Component
 public class MockBankConnector implements BankConnector {
+    
 
  @Override
 public BankDispatchResult dispatch(DispatchTransferCommand command) {
