@@ -8,6 +8,7 @@ public record DispatchIsoMessageCommand(
         String messageType,
         String sourceBank,
         String destinationBank,
+        String connectorName,
         String encryptedPayload
 ) {
 }

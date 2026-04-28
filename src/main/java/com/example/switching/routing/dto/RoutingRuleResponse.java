@@ -1,75 +1,40 @@
-package com.example.switching.routing.entity;
+package com.example.switching.routing.dto;
 
 import java.time.LocalDateTime;
 
-import com.example.switching.iso.enums.IsoMessageType;
+import com.example.switching.routing.entity.RoutingRuleEntity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+public class RoutingRuleResponse {
 
-@Entity
-@Table(name = "routing_rules")
-public class RoutingRuleEntity {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(name = "route_code", nullable = false, unique = true, length = 128)
     private String routeCode;
-
-    @Column(name = "source_bank", nullable = false, length = 32)
     private String sourceBank;
-
-    @Column(name = "destination_bank", nullable = false, length = 32)
     private String destinationBank;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "message_type", nullable = false, length = 32)
-    private IsoMessageType messageType;
-
-    @Column(name = "connector_name", nullable = false, length = 128)
+    private String messageType;
     private String connectorName;
-
-    @Column(name = "priority", nullable = false)
     private Integer priority;
-
-    @Column(name = "enabled", nullable = false)
     private Boolean enabled;
-
-    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
-
-    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    public RoutingRuleEntity() {
+    public RoutingRuleResponse() {
     }
 
-    @PrePersist
-    public void prePersist() {
-        this.createdAt = LocalDateTime.now();
+    public static RoutingRuleResponse from(RoutingRuleEntity entity) {
+        RoutingRuleResponse response = new RoutingRuleResponse();
 
-        if (this.priority == null) {
-            this.priority = 1;
-        }
+        response.setId(entity.getId());
+        response.setRouteCode(entity.getRouteCode());
+        response.setSourceBank(entity.getSourceBank());
+        response.setDestinationBank(entity.getDestinationBank());
+        response.setMessageType(entity.getMessageType() == null ? null : entity.getMessageType().name());
+        response.setConnectorName(entity.getConnectorName());
+        response.setPriority(entity.getPriority());
+        response.setEnabled(entity.getEnabled());
+        response.setCreatedAt(entity.getCreatedAt());
+        response.setUpdatedAt(entity.getUpdatedAt());
 
-        if (this.enabled == null) {
-            this.enabled = true;
-        }
-    }
-
-    @PreUpdate
-    public void preUpdate() {
-        this.updatedAt = LocalDateTime.now();
+        return response;
     }
 
     public Long getId() {
@@ -88,7 +53,7 @@ public class RoutingRuleEntity {
         return destinationBank;
     }
 
-    public IsoMessageType getMessageType() {
+    public String getMessageType() {
         return messageType;
     }
 
@@ -128,7 +93,7 @@ public class RoutingRuleEntity {
         this.destinationBank = destinationBank;
     }
 
-    public void setMessageType(IsoMessageType messageType) {
+    public void setMessageType(String messageType) {
         this.messageType = messageType;
     }
 

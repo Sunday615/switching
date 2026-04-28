@@ -18,9 +18,13 @@ import com.example.switching.inquiry.entity.InquiryEntity;
 import com.example.switching.inquiry.enums.InquiryStatus;
 import com.example.switching.inquiry.repository.InquiryRepository;
 import com.example.switching.iso.entity.IsoMessageEntity;
+import com.example.switching.iso.enums.IsoMessageType;
 import com.example.switching.iso.service.IsoMessageService;
 import com.example.switching.outbox.dto.DispatchTransferCommand;
 import com.example.switching.outbox.service.OutboxTransactionService;
+import com.example.switching.participant.service.ParticipantService;
+import com.example.switching.routing.dto.RoutingResolveResponse;
+import com.example.switching.routing.service.RoutingService;
 import com.example.switching.transfer.dto.CreateTransferRequest;
 import com.example.switching.transfer.dto.CreateTransferResponse;
 import com.example.switching.transfer.entity.TransferEntity;
@@ -35,7 +39,6 @@ import com.example.switching.transfer.repository.TransferStatusHistoryRepository
 public class CreateTransferService {
 
     private static final String CHANNEL_ID = "API";
-    private final IsoMessageService isoMessageService;
 
     private final TransferRefGenerator transferRefGenerator;
     private final TransferRepository transferRepository;
@@ -44,15 +47,21 @@ public class CreateTransferService {
     private final IdempotencyService idempotencyService;
     private final OutboxTransactionService outboxTransactionService;
     private final AuditLogService auditLogService;
+    private final IsoMessageService isoMessageService;
+    private final ParticipantService participantService;
+    private final RoutingService routingService;
 
-    public CreateTransferService(TransferRefGenerator transferRefGenerator,
+    public CreateTransferService(
+            TransferRefGenerator transferRefGenerator,
             TransferRepository transferRepository,
             TransferStatusHistoryRepository transferStatusHistoryRepository,
             InquiryRepository inquiryRepository,
             IdempotencyService idempotencyService,
             OutboxTransactionService outboxTransactionService,
             AuditLogService auditLogService,
-            IsoMessageService isoMessageService) {
+            IsoMessageService isoMessageService,
+            ParticipantService participantService,
+            RoutingService routingService) {
         this.transferRefGenerator = transferRefGenerator;
         this.transferRepository = transferRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
@@ -61,6 +70,8 @@ public class CreateTransferService {
         this.outboxTransactionService = outboxTransactionService;
         this.auditLogService = auditLogService;
         this.isoMessageService = isoMessageService;
+        this.participantService = participantService;
+        this.routingService = routingService;
     }
 
     @Transactional
@@ -84,7 +95,9 @@ public class CreateTransferService {
 
             Optional<TransferEntity> existingTransferOptional = Optional.empty();
             if (StringUtils.hasText(incomingIdempotencyKey)) {
-                existingTransferOptional = idempotencyService.findExistingTransfer(CHANNEL_ID, incomingIdempotencyKey,
+                existingTransferOptional = idempotencyService.findExistingTransfer(
+                        CHANNEL_ID,
+                        incomingIdempotencyKey,
                         requestHash);
             }
 
@@ -121,20 +134,44 @@ public class CreateTransferService {
 
             if (existingTransferByInquiry.isPresent()) {
                 throw new InquiryAlreadyUsedException(
-                        "Inquiry already used by transfer: " +
-                                existingTransferByInquiry.get().getTransferRef());
+                        "Inquiry already used by transfer: "
+                                + existingTransferByInquiry.get().getTransferRef());
             }
+
+            String normalizedSourceBank = participantService.normalize(request.getSourceBank());
+            String normalizedDestinationBank = participantService.normalize(request.getDestinationBank());
+
+            participantService.requireActive(normalizedSourceBank);
+            participantService.requireActive(normalizedDestinationBank);
+
+            RoutingResolveResponse routing = routingService.resolve(
+                    normalizedSourceBank,
+                    normalizedDestinationBank,
+                    IsoMessageType.PACS_008.name());
+
+            String routeCode = requireRoutingValue(routing.getRouteCode(), "routeCode");
+            String connectorName = requireRoutingValue(routing.getConnectorName(), "connectorName");
 
             Map<String, Object> validatedPayload = new LinkedHashMap<>();
             validatedPayload.put("inquiryRef", inquiryRef);
-            validatedPayload.put("sourceBank", request.getSourceBank());
-            validatedPayload.put("destinationBank", request.getDestinationBank());
+            validatedPayload.put("sourceBank", normalizedSourceBank);
+            validatedPayload.put("destinationBank", normalizedDestinationBank);
             validatedPayload.put("creditorAccount", request.getCreditorAccount());
             validatedPayload.put("amount", request.getAmount());
             validatedPayload.put("currency", request.getCurrency());
+            validatedPayload.put("messageType", IsoMessageType.PACS_008.name());
+            validatedPayload.put("routeCode", routeCode);
+            validatedPayload.put("connectorName", connectorName);
 
             auditLogService.log(
                     "TRANSFER_VALIDATED_AGAINST_INQUIRY",
+                    "TRANSFER",
+                    null,
+                    CHANNEL_ID,
+                    validatedPayload);
+
+            auditLogService.log(
+                    "TRANSFER_ROUTE_RESOLVED",
                     "TRANSFER",
                     null,
                     CHANNEL_ID,
@@ -156,16 +193,16 @@ public class CreateTransferService {
             transfer.setClientTransferId(clientTransferId);
             transfer.setIdempotencyKey(idempotencyKey);
             transfer.setInquiryRef(inquiryRef);
-            transfer.setSourceBank(request.getSourceBank());
+            transfer.setSourceBank(normalizedSourceBank);
             transfer.setDebtorAccount(request.getDebtorAccount());
-            transfer.setDestinationBank(request.getDestinationBank());
+            transfer.setDestinationBank(normalizedDestinationBank);
             transfer.setCreditorAccount(request.getCreditorAccount());
             transfer.setDestinationAccountName(inquiry.getDestinationAccountName());
             transfer.setAmount(request.getAmount());
             transfer.setCurrency(request.getCurrency());
             transfer.setChannelId(CHANNEL_ID);
-            transfer.setRouteCode(inquiry.getRouteCode());
-            transfer.setConnectorName(inquiry.getConnectorName());
+            transfer.setRouteCode(routeCode);
+            transfer.setConnectorName(connectorName);
             transfer.setExternalReference(null);
             transfer.setStatus(TransferStatus.RECEIVED);
             transfer.setErrorCode(null);
@@ -196,12 +233,22 @@ public class CreateTransferService {
             createdPayload.put("transferRef", transferRef);
             createdPayload.put("inquiryRef", inquiryRef);
             createdPayload.put("status", TransferStatus.RECEIVED.name());
-            createdPayload.put("sourceBank", request.getSourceBank());
-            createdPayload.put("destinationBank", request.getDestinationBank());
+            createdPayload.put("sourceBank", normalizedSourceBank);
+            createdPayload.put("destinationBank", normalizedDestinationBank);
             createdPayload.put("creditorAccount", request.getCreditorAccount());
             createdPayload.put("amount", request.getAmount());
             createdPayload.put("currency", request.getCurrency());
             createdPayload.put("idempotencyKey", idempotencyKey);
+            createdPayload.put("messageType", IsoMessageType.PACS_008.name());
+            createdPayload.put("routeCode", routeCode);
+            createdPayload.put("connectorName", connectorName);
+
+            auditLogService.log(
+                    "TRANSFER_CREATED",
+                    "TRANSFER",
+                    transferRef,
+                    CHANNEL_ID,
+                    createdPayload);
 
             IsoMessageEntity pacs008Message = isoMessageService.createEncryptedOutboundPacs008(transfer);
 
@@ -216,6 +263,10 @@ public class CreateTransferService {
             isoPayload.put("encryptedPayloadPresent", pacs008Message.getEncryptedPayload() != null);
             isoPayload.put("transferRef", transferRef);
             isoPayload.put("inquiryRef", inquiryRef);
+            isoPayload.put("sourceBank", normalizedSourceBank);
+            isoPayload.put("destinationBank", normalizedDestinationBank);
+            isoPayload.put("routeCode", routeCode);
+            isoPayload.put("connectorName", connectorName);
 
             auditLogService.log(
                     "ISO_PACS008_ENCRYPTED_CREATED",
@@ -227,14 +278,15 @@ public class CreateTransferService {
             DispatchTransferCommand command = new DispatchTransferCommand(
                     transferRef,
                     pacs008Message.getId(),
-                    request.getSourceBank(),
+                    normalizedSourceBank,
                     request.getDebtorAccount(),
-                    request.getDestinationBank(),
+                    normalizedDestinationBank,
                     request.getCreditorAccount(),
                     request.getAmount(),
                     request.getCurrency(),
-                    inquiry.getConnectorName(),
-                    inquiry.getRouteCode());
+                    connectorName,
+                    routeCode);
+
             outboxTransactionService.enqueueTransferDispatch(command);
 
             Map<String, Object> queuedPayload = new LinkedHashMap<>();
@@ -245,6 +297,11 @@ public class CreateTransferService {
             queuedPayload.put("isoMessageType", pacs008Message.getMessageType().name());
             queuedPayload.put("isoSecurityStatus", pacs008Message.getSecurityStatus().name());
             queuedPayload.put("isoEncryptedPayloadPresent", pacs008Message.getEncryptedPayload() != null);
+            queuedPayload.put("sourceBank", normalizedSourceBank);
+            queuedPayload.put("destinationBank", normalizedDestinationBank);
+            queuedPayload.put("messageType", IsoMessageType.PACS_008.name());
+            queuedPayload.put("routeCode", routeCode);
+            queuedPayload.put("connectorName", connectorName);
 
             auditLogService.log(
                     "TRANSFER_QUEUED_FOR_DISPATCH",
@@ -314,13 +371,23 @@ public class CreateTransferService {
         }
     }
 
+    private String requireRoutingValue(String value, String fieldName) {
+        if (!StringUtils.hasText(value)) {
+            throw new IllegalStateException("Routing resolved but missing " + fieldName);
+        }
+
+        return value.trim();
+    }
+
     private boolean equalsIgnoreCase(String left, String right) {
         if (left == null && right == null) {
             return true;
         }
+
         if (left == null || right == null) {
             return false;
         }
+
         return left.equalsIgnoreCase(right);
     }
 
@@ -328,9 +395,11 @@ public class CreateTransferService {
         if (left == null && right == null) {
             return true;
         }
+
         if (left == null || right == null) {
             return false;
         }
+
         return left.equals(right);
     }
 
@@ -342,6 +411,7 @@ public class CreateTransferService {
         if (!StringUtils.hasText(value)) {
             return null;
         }
+
         return value.trim();
     }
 }

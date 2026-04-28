@@ -5,6 +5,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import com.example.switching.connector.entity.ConnectorConfigEntity;
+import com.example.switching.connector.service.ConnectorConfigService;
 import com.example.switching.iso.mapper.Pacs002XmlBuilder;
 import com.example.switching.outbox.dto.BankDispatchResult;
 import com.example.switching.outbox.dto.BankIsoDispatchResponse;
@@ -15,16 +17,21 @@ import com.example.switching.outbox.dto.DispatchTransferCommand;
 public class MockBankConnector implements BankConnector {
 
     private final Pacs002XmlBuilder pacs002XmlBuilder;
+    private final ConnectorConfigService connectorConfigService;
 
-    public MockBankConnector(Pacs002XmlBuilder pacs002XmlBuilder) {
+    public MockBankConnector(
+            Pacs002XmlBuilder pacs002XmlBuilder,
+            ConnectorConfigService connectorConfigService
+    ) {
         this.pacs002XmlBuilder = pacs002XmlBuilder;
+        this.connectorConfigService = connectorConfigService;
     }
 
     @Override
     public BankDispatchResult dispatch(DispatchTransferCommand command) {
         return new BankDispatchResult(
                 true,
-                "00",
+                externalReference(),
                 "MOCK_TRANSFER_ACCEPTED",
                 null,
                 null
@@ -35,12 +42,22 @@ public class MockBankConnector implements BankConnector {
     public BankDispatchResult dispatchIsoMessage(DispatchIsoMessageCommand command) {
         BankIsoDispatchResponse response = dispatchIsoMessageWithPacs002(command);
 
+        if (response.success()) {
+            return new BankDispatchResult(
+                    true,
+                    response.externalReference(),
+                    response.responseMessage(),
+                    null,
+                    null
+            );
+        }
+
         return new BankDispatchResult(
-                response.success(),
-                response.responseCode(),
-                response.responseMessage(),
+                false,
                 response.externalReference(),
-                response.isoStatusCode()
+                null,
+                response.responseCode(),
+                response.responseMessage()
         );
     }
 
@@ -70,6 +87,14 @@ public class MockBankConnector implements BankConnector {
             );
         }
 
+        if (!StringUtils.hasText(command.destinationBank())) {
+            return rejectedWithoutPacs002(
+                    "BANK-400",
+                    "destinationBank is required",
+                    command.transferRef()
+            );
+        }
+
         if (!StringUtils.hasText(command.encryptedPayload())) {
             return rejectedWithoutPacs002(
                     "BANK-400",
@@ -78,19 +103,40 @@ public class MockBankConnector implements BankConnector {
             );
         }
 
-        if (!"BANK_B".equalsIgnoreCase(command.destinationBank())) {
+        ConnectorConfigEntity connectorConfig = connectorConfigService.resolveForDispatch(
+                command.connectorName(),
+                command.destinationBank()
+        );
+
+        if (!connectorConfig.enabled()) {
+            return rejectedWithoutPacs002(
+                    "BANK-503",
+                    "Connector is disabled: " + connectorConfig.getConnectorName(),
+                    command.transferRef()
+            );
+        }
+
+        if (connectorConfig.forceReject()) {
+            String reasonCode = StringUtils.hasText(connectorConfig.getRejectReasonCode())
+                    ? connectorConfig.getRejectReasonCode()
+                    : "AC01";
+
+            String reasonMessage = StringUtils.hasText(connectorConfig.getRejectReasonMessage())
+                    ? connectorConfig.getRejectReasonMessage()
+                    : "Mock connector rejected transfer";
+
             String pacs002Xml = pacs002XmlBuilder.buildRejectedResponse(
                     command.messageId(),
                     command.endToEndId(),
                     command.transferRef(),
-                    "AG01",
-                    "Destination bank not supported by mock connector"
+                    reasonCode,
+                    reasonMessage
             );
 
             return new BankIsoDispatchResponse(
                     false,
-                    "BANK-404",
-                    "Destination bank not supported by mock connector",
+                    "PACS002-RJCT",
+                    "MOCK_CONNECTOR_REJECTED_AND_RETURNED_PACS002",
                     externalReference(),
                     pacs002Xml,
                     "RJCT"
@@ -106,7 +152,7 @@ public class MockBankConnector implements BankConnector {
         return new BankIsoDispatchResponse(
                 true,
                 "00",
-                "MOCK_BANK_B_ACCEPTED_AND_RETURNED_PACS002",
+                "MOCK_CONNECTOR_ACCEPTED_AND_RETURNED_PACS002",
                 externalReference(),
                 pacs002Xml,
                 "ACSC"

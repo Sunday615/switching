@@ -30,5 +30,6 @@ management:
         include: health,info
 
 switching:
-  outbox:
-    dispatch-delay-ms: ${OUTBOX_DISPATCH_DELAY_MS:5000}
+  mock-bank:
+    pacs002:
+      force-reject: false

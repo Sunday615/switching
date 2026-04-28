@@ -1,6 +1,7 @@
 package com.example.switching.iso.service;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -29,135 +30,151 @@ public class IsoMessageQueryService {
     }
 
     @Transactional(readOnly = true)
-    public IsoMessageListResponse search(String messageType,
-                                         String direction,
-                                         String correlationRef,
-                                         String inquiryRef,
-                                         String transferRef,
-                                         String endToEndId,
-                                         Integer limit) {
-        int resolvedLimit = resolveLimit(limit);
+    public IsoMessageListResponse search(
+            String messageType,
+            String direction,
+            String correlationRef,
+            String inquiryRef,
+            String transferRef,
+            String endToEndId,
+            Integer limit
+    ) {
+        int safeLimit = sanitizeLimit(limit);
 
-        IsoMessageType resolvedMessageType = resolveMessageType(messageType);
-        IsoMessageDirection resolvedDirection = resolveDirection(direction);
+        IsoMessageType parsedMessageType = parseMessageType(messageType);
+        IsoMessageDirection parsedDirection = parseDirection(direction);
 
-        String resolvedCorrelationRef = normalize(correlationRef);
-        String resolvedInquiryRef = normalize(inquiryRef);
-        String resolvedTransferRef = normalize(transferRef);
-        String resolvedEndToEndId = normalize(endToEndId);
-
-        List<IsoMessageEntity> messages = isoMessageRepository.searchIsoMessages(
-                resolvedMessageType,
-                resolvedDirection,
-                resolvedCorrelationRef,
-                resolvedInquiryRef,
-                resolvedTransferRef,
-                resolvedEndToEndId,
-                PageRequest.of(0, resolvedLimit)
-        );
-
-        List<IsoMessageItemResponse> items = messages.stream()
+        List<IsoMessageItemResponse> items = isoMessageRepository
+                .search(
+                        parsedMessageType,
+                        parsedDirection,
+                        normalize(correlationRef),
+                        normalize(inquiryRef),
+                        normalize(transferRef),
+                        normalize(endToEndId),
+                        PageRequest.of(0, safeLimit)
+                )
+                .stream()
                 .map(this::toItemResponse)
-                .toList();
+                .collect(Collectors.toList());
 
-        return new IsoMessageListResponse(
-                items.size(),
-                resolvedLimit,
-                resolvedMessageType == null ? null : resolvedMessageType.name(),
-                resolvedDirection == null ? null : resolvedDirection.name(),
-                resolvedCorrelationRef,
-                resolvedInquiryRef,
-                resolvedTransferRef,
-                resolvedEndToEndId,
-                items
-        );
-    }
-
-    @Transactional(readOnly = true)
-    public IsoMessageDetailResponse getById(Long id) {
-        IsoMessageEntity message = isoMessageRepository.findById(id)
-                .orElseThrow(() -> new IsoMessageNotFoundException("ISO message not found: " + id));
-
-        return toDetailResponse(message);
-    }
-
-    private IsoMessageItemResponse toItemResponse(IsoMessageEntity message) {
-        return new IsoMessageItemResponse(
-                message.getId(),
-                message.getCorrelationRef(),
-                message.getInquiryRef(),
-                message.getTransferRef(),
-                message.getEndToEndId(),
-                message.getMessageId(),
-                message.getMessageType() == null ? null : message.getMessageType().name(),
-                message.getDirection() == null ? null : message.getDirection().name(),
-                message.getSecurityStatus() == null ? null : message.getSecurityStatus().name(),
-                message.getValidationStatus() == null ? null : message.getValidationStatus().name(),
-                message.getErrorCode(),
-                message.getErrorMessage(),
-                message.getCreatedAt()
-        );
-    }
-
-    private IsoMessageDetailResponse toDetailResponse(IsoMessageEntity message) {
-        IsoMessageDetailResponse response = new IsoMessageDetailResponse();
-
-        response.setId(message.getId());
-        response.setCorrelationRef(message.getCorrelationRef());
-        response.setInquiryRef(message.getInquiryRef());
-        response.setTransferRef(message.getTransferRef());
-        response.setEndToEndId(message.getEndToEndId());
-        response.setMessageId(message.getMessageId());
-        response.setMessageType(message.getMessageType() == null ? null : message.getMessageType().name());
-        response.setDirection(message.getDirection() == null ? null : message.getDirection().name());
-        response.setPlainPayload(message.getPlainPayload());
-        response.setEncryptedPayload(message.getEncryptedPayload());
-        response.setSecurityStatus(message.getSecurityStatus() == null ? null : message.getSecurityStatus().name());
-        response.setValidationStatus(message.getValidationStatus() == null ? null : message.getValidationStatus().name());
-        response.setErrorCode(message.getErrorCode());
-        response.setErrorMessage(message.getErrorMessage());
-        response.setCreatedAt(message.getCreatedAt());
+        IsoMessageListResponse response = new IsoMessageListResponse();
+        response.setCount(items.size());
+        response.setLimit(safeLimit);
+        response.setMessageType(normalize(messageType));
+        response.setDirection(normalize(direction));
+        response.setCorrelationRef(normalize(correlationRef));
+        response.setInquiryRef(normalize(inquiryRef));
+        response.setTransferRef(normalize(transferRef));
+        response.setEndToEndId(normalize(endToEndId));
+        response.setItems(items);
 
         return response;
     }
 
-    private IsoMessageType resolveMessageType(String messageType) {
-        String normalized = normalize(messageType);
-        if (!StringUtils.hasText(normalized)) {
+    @Transactional(readOnly = true)
+    public IsoMessageDetailResponse getDetail(String messageKey) {
+        IsoMessageEntity entity = findByIdOrMessageId(messageKey);
+        return toDetailResponse(entity);
+    }
+
+    @Transactional(readOnly = true)
+    public IsoMessageEntity findEntityByIdOrMessageId(String messageKey) {
+        return findByIdOrMessageId(messageKey);
+    }
+
+    private IsoMessageEntity findByIdOrMessageId(String messageKey) {
+        if (!StringUtils.hasText(messageKey)) {
+            throw new IsoMessageNotFoundException("empty");
+        }
+
+        String key = messageKey.trim();
+
+        if (isNumeric(key)) {
+            Long id = Long.valueOf(key);
+            return isoMessageRepository.findById(id)
+                    .orElseThrow(() -> new IsoMessageNotFoundException(key));
+        }
+
+        return isoMessageRepository.findByMessageId(key)
+                .orElseThrow(() -> new IsoMessageNotFoundException(key));
+    }
+
+    private IsoMessageItemResponse toItemResponse(IsoMessageEntity entity) {
+        IsoMessageItemResponse response = new IsoMessageItemResponse();
+
+        response.setId(entity.getId());
+        response.setCorrelationRef(entity.getCorrelationRef());
+        response.setInquiryRef(entity.getInquiryRef());
+        response.setTransferRef(entity.getTransferRef());
+        response.setEndToEndId(entity.getEndToEndId());
+        response.setMessageId(entity.getMessageId());
+        response.setMessageType(entity.getMessageType() == null ? null : entity.getMessageType().name());
+        response.setDirection(entity.getDirection() == null ? null : entity.getDirection().name());
+        response.setSecurityStatus(entity.getSecurityStatus() == null ? null : entity.getSecurityStatus().name());
+        response.setValidationStatus(entity.getValidationStatus() == null ? null : entity.getValidationStatus().name());
+        response.setErrorCode(entity.getErrorCode());
+        response.setErrorMessage(entity.getErrorMessage());
+        response.setCreatedAt(entity.getCreatedAt());
+
+        return response;
+    }
+
+    private IsoMessageDetailResponse toDetailResponse(IsoMessageEntity entity) {
+        IsoMessageDetailResponse response = new IsoMessageDetailResponse();
+
+        response.setId(entity.getId());
+        response.setCorrelationRef(entity.getCorrelationRef());
+        response.setInquiryRef(entity.getInquiryRef());
+        response.setTransferRef(entity.getTransferRef());
+        response.setEndToEndId(entity.getEndToEndId());
+        response.setMessageId(entity.getMessageId());
+        response.setMessageType(entity.getMessageType() == null ? null : entity.getMessageType().name());
+        response.setDirection(entity.getDirection() == null ? null : entity.getDirection().name());
+        response.setSecurityStatus(entity.getSecurityStatus() == null ? null : entity.getSecurityStatus().name());
+        response.setValidationStatus(entity.getValidationStatus() == null ? null : entity.getValidationStatus().name());
+        response.setPlainPayload(entity.getPlainPayload());
+        response.setEncryptedPayload(entity.getEncryptedPayload());
+        response.setErrorCode(entity.getErrorCode());
+        response.setErrorMessage(entity.getErrorMessage());
+        response.setCreatedAt(entity.getCreatedAt());
+
+        return response;
+    }
+
+    private IsoMessageType parseMessageType(String value) {
+        if (!StringUtils.hasText(value)) {
             return null;
         }
 
-        try {
-            return IsoMessageType.valueOf(normalized.toUpperCase());
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("Invalid ISO message type: " + messageType);
-        }
+        return IsoMessageType.valueOf(value.trim().toUpperCase());
     }
 
-    private IsoMessageDirection resolveDirection(String direction) {
-        String normalized = normalize(direction);
-        if (!StringUtils.hasText(normalized)) {
+    private IsoMessageDirection parseDirection(String value) {
+        if (!StringUtils.hasText(value)) {
             return null;
         }
 
-        try {
-            return IsoMessageDirection.valueOf(normalized.toUpperCase());
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("Invalid ISO message direction: " + direction);
-        }
-    }
-
-    private int resolveLimit(Integer limit) {
-        if (limit == null || limit <= 0) {
-            return DEFAULT_LIMIT;
-        }
-        return Math.min(limit, MAX_LIMIT);
+        return IsoMessageDirection.valueOf(value.trim().toUpperCase());
     }
 
     private String normalize(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
         }
+
         return value.trim();
+    }
+
+    private int sanitizeLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_LIMIT;
+        }
+
+        return Math.min(limit, MAX_LIMIT);
+    }
+
+    private boolean isNumeric(String value) {
+        return value.matches("\\d+");
     }
 }
