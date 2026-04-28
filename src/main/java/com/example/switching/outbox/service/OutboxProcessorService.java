@@ -44,17 +44,19 @@ public class OutboxProcessorService {
     private final TransferRepository transferRepository;
     private final TransferStatusHistoryRepository transferStatusHistoryRepository;
     private final BankConnector bankConnector;
+    private final OutboxIsoMessageDispatchService outboxIsoMessageDispatchService;
     private final ObjectMapper objectMapper;
+
     private final AuditLogService auditLogService;
     private final IdempotencyService idempotencyService;
     private final ErrorClassifier errorClassifier;
     private final TransactionTemplate transactionTemplate;
-    
 
     public OutboxProcessorService(OutboxEventRepository outboxEventRepository,
             TransferRepository transferRepository,
             TransferStatusHistoryRepository transferStatusHistoryRepository,
             BankConnector bankConnector,
+            OutboxIsoMessageDispatchService outboxIsoMessageDispatchService,
             ObjectMapper objectMapper,
             AuditLogService auditLogService,
             IdempotencyService idempotencyService,
@@ -64,6 +66,7 @@ public class OutboxProcessorService {
         this.transferRepository = transferRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
         this.bankConnector = bankConnector;
+        this.outboxIsoMessageDispatchService = outboxIsoMessageDispatchService;
         this.objectMapper = objectMapper;
         this.auditLogService = auditLogService;
         this.idempotencyService = idempotencyService;
@@ -103,9 +106,10 @@ public class OutboxProcessorService {
                         "Missing isoMessageId in outbox payload for transferRef: " + command.getTransferRef());
             }
 
-            BankDispatchResult result = bankConnector.dispatch(command);
+            BankDispatchResult result = outboxIsoMessageDispatchService
+                    .dispatchEncryptedIsoMessage(claimedEvent.getPayload());
             if (result == null) {
-                throw new IllegalStateException("BankConnector returned null result");
+                throw new IllegalStateException("OutboxIsoMessageDispatchService returned null result");
             }
 
             final DispatchTransferCommand finalCommand = command;

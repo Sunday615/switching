@@ -4,12 +4,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.example.switching.connector.BankConnector;
+import com.example.switching.iso.dto.Pacs002ParseResult;
 import com.example.switching.iso.entity.IsoMessageEntity;
 import com.example.switching.iso.enums.IsoSecurityStatus;
 import com.example.switching.iso.exception.IsoMessageInvalidStateException;
 import com.example.switching.iso.exception.IsoMessageNotFoundException;
+import com.example.switching.iso.parser.Pacs002Parser;
 import com.example.switching.iso.repository.IsoMessageRepository;
 import com.example.switching.outbox.dto.BankDispatchResult;
+import com.example.switching.outbox.dto.BankIsoDispatchResponse;
 import com.example.switching.outbox.dto.DispatchIsoMessageCommand;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,15 +23,17 @@ public class OutboxIsoMessageDispatchService {
     private final ObjectMapper objectMapper;
     private final IsoMessageRepository isoMessageRepository;
     private final BankConnector bankConnector;
+    private final Pacs002Parser pacs002Parser;
 
     public OutboxIsoMessageDispatchService(
             ObjectMapper objectMapper,
             IsoMessageRepository isoMessageRepository,
-            BankConnector bankConnector
-    ) {
+            BankConnector bankConnector,
+            Pacs002Parser pacs002Parser) {
         this.objectMapper = objectMapper;
         this.isoMessageRepository = isoMessageRepository;
         this.bankConnector = bankConnector;
+        this.pacs002Parser = pacs002Parser;
     }
 
     public BankDispatchResult dispatchEncryptedIsoMessage(String outboxPayload) {
@@ -53,10 +58,57 @@ public class OutboxIsoMessageDispatchService {
                     String.valueOf(isoMessage.getMessageType()),
                     sourceBank,
                     destinationBank,
-                    isoMessage.getEncryptedPayload()
-            );
+                    isoMessage.getEncryptedPayload());
 
-            return bankConnector.dispatchIsoMessage(command);
+            BankIsoDispatchResponse bankResponse = bankConnector.dispatchIsoMessageWithPacs002(command);
+
+            if (!bankResponse.success()) {
+                return new BankDispatchResult(
+                        false,
+                        bankResponse.responseCode(),
+                        bankResponse.responseMessage(),
+                        bankResponse.externalReference(),
+                        bankResponse.isoStatusCode());
+            }
+
+            if (!StringUtils.hasText(bankResponse.pacs002Xml())) {
+                return new BankDispatchResult(
+                        false,
+                        "PACS002-001",
+                        "Bank response success but PACS.002 XML is empty",
+                        bankResponse.externalReference(),
+                        bankResponse.isoStatusCode());
+            }
+
+            Pacs002ParseResult pacs002 = pacs002Parser.parse(bankResponse.pacs002Xml());
+
+            if (pacs002.accepted()) {
+                return new BankDispatchResult(
+                        true,
+                        bankResponse.externalReference(),
+                        "PACS.002 accepted with TxSts=" + pacs002.transactionStatus(),
+                        null,
+                        null);
+            }
+
+            if (pacs002.rejected()) {
+                return new BankDispatchResult(
+                        false,
+                        "PACS002-RJCT",
+                        "PACS.002 rejected. reasonCode="
+                                + pacs002.reasonCode()
+                                + ", reasonMessage="
+                                + pacs002.reasonMessage(),
+                        bankResponse.externalReference(),
+                        "PACS002_" + pacs002.transactionStatus());
+            }
+
+            return new BankDispatchResult(
+                    false,
+                    "PACS002-UNKNOWN",
+                    "Unsupported PACS.002 TxSts=" + pacs002.transactionStatus(),
+                    bankResponse.externalReference(),
+                    "PACS002_" + pacs002.transactionStatus());
 
         } catch (IsoMessageNotFoundException | IsoMessageInvalidStateException ex) {
             throw ex;
@@ -68,8 +120,7 @@ public class OutboxIsoMessageDispatchService {
     private void validateIsoMessage(IsoMessageEntity isoMessage, String transferRef) {
         if (!StringUtils.hasText(isoMessage.getTransferRef())) {
             throw new IsoMessageInvalidStateException(
-                    "ISO message transferRef is empty. isoMessageId=" + isoMessage.getId()
-            );
+                    "ISO message transferRef is empty. isoMessageId=" + isoMessage.getId());
         }
 
         if (!isoMessage.getTransferRef().equals(transferRef)) {
@@ -79,8 +130,7 @@ public class OutboxIsoMessageDispatchService {
                             + ", isoTransferRef="
                             + isoMessage.getTransferRef()
                             + ", outboxTransferRef="
-                            + transferRef
-            );
+                            + transferRef);
         }
 
         if (isoMessage.getSecurityStatus() != IsoSecurityStatus.ENCRYPTED) {
@@ -88,14 +138,12 @@ public class OutboxIsoMessageDispatchService {
                     "ISO message must be ENCRYPTED before dispatch. isoMessageId="
                             + isoMessage.getId()
                             + ", securityStatus="
-                            + isoMessage.getSecurityStatus()
-            );
+                            + isoMessage.getSecurityStatus());
         }
 
         if (!StringUtils.hasText(isoMessage.getEncryptedPayload())) {
             throw new IsoMessageInvalidStateException(
-                    "ISO encryptedPayload is empty. isoMessageId=" + isoMessage.getId()
-            );
+                    "ISO encryptedPayload is empty. isoMessageId=" + isoMessage.getId());
         }
     }
 
