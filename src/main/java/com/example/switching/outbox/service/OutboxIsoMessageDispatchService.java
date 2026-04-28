@@ -101,10 +101,7 @@ public class OutboxIsoMessageDispatchService {
                     bankResponse
             );
 
-            /*
-             * ถ้า Bank B ส่ง PACS.002 XML กลับมา ไม่ว่าจะ accepted หรือ rejected
-             * ให้ parse และ save inbound message ลง iso_messages
-             */
+      
             if (StringUtils.hasText(bankResponse.pacs002Xml())) {
                 Pacs002ParseResult pacs002 =
                         pacs002Parser.parse(bankResponse.pacs002Xml());
