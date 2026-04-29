@@ -8,6 +8,7 @@ import org.springframework.util.StringUtils;
 
 import com.example.switching.audit.service.AuditLogService;
 import com.example.switching.connector.BankConnector;
+import com.example.switching.connector.registry.ConnectorRegistry;
 import com.example.switching.iso.dto.Pacs002ParseResult;
 import com.example.switching.iso.entity.IsoMessageEntity;
 import com.example.switching.iso.enums.IsoSecurityStatus;
@@ -30,7 +31,7 @@ public class OutboxIsoMessageDispatchService {
 
     private final ObjectMapper objectMapper;
     private final IsoMessageRepository isoMessageRepository;
-    private final BankConnector bankConnector;
+    private final ConnectorRegistry connectorRegistry;
     private final Pacs002Parser pacs002Parser;
     private final InboundPacs002MessageService inboundPacs002MessageService;
     private final AuditLogService auditLogService;
@@ -38,13 +39,13 @@ public class OutboxIsoMessageDispatchService {
     public OutboxIsoMessageDispatchService(
             ObjectMapper objectMapper,
             IsoMessageRepository isoMessageRepository,
-            BankConnector bankConnector,
+            ConnectorRegistry connectorRegistry,
             Pacs002Parser pacs002Parser,
             InboundPacs002MessageService inboundPacs002MessageService,
             AuditLogService auditLogService) {
         this.objectMapper = objectMapper;
         this.isoMessageRepository = isoMessageRepository;
-        this.bankConnector = bankConnector;
+        this.connectorRegistry = connectorRegistry;
         this.pacs002Parser = pacs002Parser;
         this.inboundPacs002MessageService = inboundPacs002MessageService;
         this.auditLogService = auditLogService;
@@ -87,7 +88,8 @@ public class OutboxIsoMessageDispatchService {
                     connectorName,
                     outboundPacs008.getEncryptedPayload());
 
-            BankIsoDispatchResponse bankResponse = bankConnector.dispatchIsoMessageWithPacs002(command);
+            BankConnector connector = connectorRegistry.resolve(connectorName);
+            BankIsoDispatchResponse bankResponse = connector.dispatchIsoMessageWithPacs002(command);
 
             if (bankResponse == null) {
                 return new BankDispatchResult(

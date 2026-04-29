@@ -15,7 +15,6 @@ import org.springframework.util.StringUtils;
 import com.example.switching.audit.service.AuditLogService;
 import com.example.switching.common.error.ErrorCatalog;
 import com.example.switching.common.error.ErrorClassifier;
-import com.example.switching.connector.BankConnector;
 import com.example.switching.idempotency.service.IdempotencyService;
 import com.example.switching.outbox.dto.BankDispatchResult;
 import com.example.switching.outbox.dto.DispatchTransferCommand;
@@ -43,7 +42,6 @@ public class OutboxProcessorService {
     private final OutboxEventRepository outboxEventRepository;
     private final TransferRepository transferRepository;
     private final TransferStatusHistoryRepository transferStatusHistoryRepository;
-    private final BankConnector bankConnector;
     private final OutboxIsoMessageDispatchService outboxIsoMessageDispatchService;
     private final ObjectMapper objectMapper;
 
@@ -55,7 +53,6 @@ public class OutboxProcessorService {
     public OutboxProcessorService(OutboxEventRepository outboxEventRepository,
             TransferRepository transferRepository,
             TransferStatusHistoryRepository transferStatusHistoryRepository,
-            BankConnector bankConnector,
             OutboxIsoMessageDispatchService outboxIsoMessageDispatchService,
             ObjectMapper objectMapper,
             AuditLogService auditLogService,
@@ -65,7 +62,6 @@ public class OutboxProcessorService {
         this.outboxEventRepository = outboxEventRepository;
         this.transferRepository = transferRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
-        this.bankConnector = bankConnector;
         this.outboxIsoMessageDispatchService = outboxIsoMessageDispatchService;
         this.objectMapper = objectMapper;
         this.auditLogService = auditLogService;
