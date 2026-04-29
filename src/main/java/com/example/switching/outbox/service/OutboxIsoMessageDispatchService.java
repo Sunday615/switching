@@ -59,12 +59,35 @@ public class OutboxIsoMessageDispatchService {
             Long isoMessageId = requiredLong(payload, "isoMessageId");
             String sourceBank = requiredText(payload, "sourceBank");
             String destinationBank = requiredText(payload, "destinationBank");
-            String messageType = requiredText(payload, "messageType");
+
+            /*
+             * IMPORTANT:
+             *
+             * Old outbox payloads may not contain messageType.
+             * Do not use requiredText(payload, "messageType") here.
+             *
+             * We load the outbound ISO message by isoMessageId first,
+             * then fallback messageType from iso_messages.message_type.
+             */
+            String messageType = optionalText(payload, "messageType");
+
             String routeCode = requiredText(payload, "routeCode");
             String connectorName = requiredText(payload, "connectorName");
 
             IsoMessageEntity outboundPacs008 = isoMessageRepository.findById(isoMessageId)
                     .orElseThrow(() -> new IsoMessageNotFoundException(String.valueOf(isoMessageId)));
+
+            if (!StringUtils.hasText(messageType) && outboundPacs008.getMessageType() != null) {
+                messageType = String.valueOf(outboundPacs008.getMessageType());
+            }
+
+            if (!StringUtils.hasText(messageType)) {
+                throw new IsoMessageInvalidStateException(
+                        "messageType is missing from outbox payload and iso_messages. isoMessageId="
+                                + isoMessageId
+                                + ", transferRef="
+                                + transferRef);
+            }
 
             validateOutboundPacs008(outboundPacs008, transferRef);
 
@@ -82,7 +105,7 @@ public class OutboxIsoMessageDispatchService {
                     outboundPacs008.getId(),
                     outboundPacs008.getMessageId(),
                     outboundPacs008.getEndToEndId(),
-                    String.valueOf(outboundPacs008.getMessageType()),
+                    messageType,
                     sourceBank,
                     destinationBank,
                     connectorName,
@@ -332,13 +355,33 @@ public class OutboxIsoMessageDispatchService {
     }
 
     private String requiredText(JsonNode node, String fieldName) {
-        JsonNode value = node.get(fieldName);
+        String value = optionalText(node, fieldName);
 
-        if (value == null || value.isNull() || !StringUtils.hasText(value.asText())) {
+        if (!StringUtils.hasText(value)) {
             throw new IllegalArgumentException("Missing required field in outbox payload: " + fieldName);
         }
 
-        return value.asText().trim();
+        return value;
+    }
+
+    private String optionalText(JsonNode node, String fieldName) {
+        if (node == null) {
+            return null;
+        }
+
+        JsonNode value = node.get(fieldName);
+
+        if (value == null || value.isNull()) {
+            return null;
+        }
+
+        String text = value.asText();
+
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+
+        return text.trim();
     }
 
     private Long requiredLong(JsonNode node, String fieldName) {

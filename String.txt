@@ -1,0 +1,649 @@
+.
+├── boot.log
+├── docker-compose.yml
+├── Dockerfile
+├── docs
+│   └── diagrams
+│       └── switching-kafka-iso20022-flow-english.png
+├── mvnw
+├── mvnw.cmd
+├── pom.xml
+├── run-error.log
+├── scripts
+│   ├── curl_phase3_management_tests.sh
+│   └── generate_switching_kafka_flowchart.py
+├── src
+│   ├── main
+│   │   ├── java
+│   │   │   └── com
+│   │   │       └── example
+│   │   │           └── switching
+│   │   │               ├── audit
+│   │   │               │   ├── controller
+│   │   │               │   │   └── AuditLogController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── AuditLogItemResponse.java
+│   │   │               │   │   └── AuditLogListResponse.java
+│   │   │               │   ├── entity
+│   │   │               │   │   └── AuditLogEntity.java
+│   │   │               │   ├── repository
+│   │   │               │   │   ├── AuditLogRepository.java
+│   │   │               │   │   └── AuditLogSearchRow.java
+│   │   │               │   └── service
+│   │   │               │       ├── AuditLogQueryService.java
+│   │   │               │       └── AuditLogService.java
+│   │   │               ├── common
+│   │   │               │   ├── dto
+│   │   │               │   │   └── ApiErrorResponse.java
+│   │   │               │   ├── error
+│   │   │               │   │   ├── ErrorCatalog.java
+│   │   │               │   │   ├── ErrorCategory.java
+│   │   │               │   │   ├── ErrorClassifier.java
+│   │   │               │   │   ├── ErrorLayer.java
+│   │   │               │   │   └── ErrorPhase.java
+│   │   │               │   ├── exception
+│   │   │               │   │   └── GlobalExceptionHandler.java
+│   │   │               │   ├── filter
+│   │   │               │   │   └── RequestIdFilter.java
+│   │   │               │   └── util
+│   │   │               │       ├── RequestHashUtil.java
+│   │   │               │       └── TransferRefGenerator.java
+│   │   │               ├── config
+│   │   │               │   ├── JacksonConfig.java
+│   │   │               │   ├── JpaConfig.java
+│   │   │               │   ├── OpenApiConfig.java
+│   │   │               │   ├── SchedulingConfig.java
+│   │   │               │   └── WebConfig.java
+│   │   │               ├── connector
+│   │   │               │   ├── BankConnector.java
+│   │   │               │   ├── controller
+│   │   │               │   │   └── ConnectorConfigController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── ConnectorConfigListResponse.java
+│   │   │               │   │   ├── ConnectorConfigResponse.java
+│   │   │               │   │   ├── CreateConnectorConfigRequest.java
+│   │   │               │   │   └── UpdateConnectorConfigRequest.java
+│   │   │               │   ├── entity
+│   │   │               │   │   └── ConnectorConfigEntity.java
+│   │   │               │   ├── enums
+│   │   │               │   │   └── ConnectorType.java
+│   │   │               │   ├── exception
+│   │   │               │   │   ├── ConnectorConfigAlreadyExistsException.java
+│   │   │               │   │   └── ConnectorConfigNotFoundException.java
+│   │   │               │   ├── GenericHttpConnector.java
+│   │   │               │   ├── GenericMockConnector.java
+│   │   │               │   ├── GenericMqConnector.java
+│   │   │               │   ├── MockBankConnector.java
+│   │   │               │   ├── registry
+│   │   │               │   │   └── ConnectorRegistry.java
+│   │   │               │   ├── repository
+│   │   │               │   │   └── ConnectorConfigRepository.java
+│   │   │               │   └── service
+│   │   │               │       ├── ConnectorConfigManagementService.java
+│   │   │               │       └── ConnectorConfigService.java
+│   │   │               ├── dashboard
+│   │   │               │   ├── controller
+│   │   │               │   │   └── DashboardController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── DashboardOverviewResponse.java
+│   │   │               │   │   └── StatusCountResponse.java
+│   │   │               │   └── service
+│   │   │               │       └── DashboardOverviewService.java
+│   │   │               ├── demo
+│   │   │               │   ├── controller
+│   │   │               │   │   └── DemoFlowController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── DemoRequestFlowResponse.java
+│   │   │               │   │   ├── DemoResponseFlowResponse.java
+│   │   │               │   │   └── TransferTraceResponse.java
+│   │   │               │   └── service
+│   │   │               │       └── DemoFlowService.java
+│   │   │               ├── idempotency
+│   │   │               │   ├── entity
+│   │   │               │   │   └── IdempotencyRecordEntity.java
+│   │   │               │   ├── exception
+│   │   │               │   │   └── IdempotencyConflictException.java
+│   │   │               │   ├── repository
+│   │   │               │   │   └── IdempotencyRecordRepository.java
+│   │   │               │   └── service
+│   │   │               │       └── IdempotencyService.java
+│   │   │               ├── inquiry
+│   │   │               │   ├── controller
+│   │   │               │   │   ├── InquiryController.java
+│   │   │               │   │   └── InquiryTransferController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── CreateInquiryRequest.java
+│   │   │               │   │   ├── CreateInquiryResponse.java
+│   │   │               │   │   ├── InquiryResponse.java
+│   │   │               │   │   ├── InquiryStatusHistoryItemResponse.java
+│   │   │               │   │   ├── InquiryTransferItemResponse.java
+│   │   │               │   │   └── InquiryTransfersResponse.java
+│   │   │               │   ├── entity
+│   │   │               │   │   ├── InquiryEntity.java
+│   │   │               │   │   └── InquiryStatusHistoryEntity.java
+│   │   │               │   ├── enums
+│   │   │               │   │   └── InquiryStatus.java
+│   │   │               │   ├── exception
+│   │   │               │   │   └── InquiryNotFoundException.java
+│   │   │               │   ├── repository
+│   │   │               │   │   ├── InquiryRepository.java
+│   │   │               │   │   └── InquiryStatusHistoryRepository.java
+│   │   │               │   └── service
+│   │   │               │       ├── CreateInquiryService.java
+│   │   │               │       ├── InquiryLookupService.java
+│   │   │               │       └── InquiryTransferQueryService.java
+│   │   │               ├── iso
+│   │   │               │   ├── controller
+│   │   │               │   │   ├── IsoMessageController.java
+│   │   │               │   │   ├── IsoMessageSecurityController.java
+│   │   │               │   │   ├── IsoMessageSecurityPolicyController.java
+│   │   │               │   │   └── IsoMessageValidationController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── IsoMessageDetailResponse.java
+│   │   │               │   │   ├── IsoMessageItemResponse.java
+│   │   │               │   │   ├── IsoMessageListResponse.java
+│   │   │               │   │   ├── IsoMessageSecurityActionResponse.java
+│   │   │               │   │   ├── IsoMessageSecurityPolicyResponse.java
+│   │   │               │   │   ├── IsoMessageValidationActionResponse.java
+│   │   │               │   │   ├── IsoXmlValidationResult.java
+│   │   │               │   │   └── Pacs002ParseResult.java
+│   │   │               │   ├── entity
+│   │   │               │   │   └── IsoMessageEntity.java
+│   │   │               │   ├── enums
+│   │   │               │   │   ├── IsoMessageDirection.java
+│   │   │               │   │   ├── IsoMessageType.java
+│   │   │               │   │   ├── IsoSecurityStatus.java
+│   │   │               │   │   └── IsoValidationStatus.java
+│   │   │               │   ├── exception
+│   │   │               │   │   ├── IsoMessageCryptoException.java
+│   │   │               │   │   ├── IsoMessageInvalidStateException.java
+│   │   │               │   │   └── IsoMessageNotFoundException.java
+│   │   │               │   ├── mapper
+│   │   │               │   │   ├── Pacs002Mapper.java
+│   │   │               │   │   ├── Pacs002XmlBuilder.java
+│   │   │               │   │   ├── Pacs008Mapper.java
+│   │   │               │   │   ├── Pacs008XmlBuilder.java
+│   │   │               │   │   └── Pacs028Mapper.java
+│   │   │               │   ├── parser
+│   │   │               │   │   ├── IsoXmlParser.java
+│   │   │               │   │   ├── IsoXmlValidator.java
+│   │   │               │   │   └── Pacs002Parser.java
+│   │   │               │   ├── reposentory
+│   │   │               │   ├── repository
+│   │   │               │   │   └── IsoMessageRepository.java
+│   │   │               │   ├── security
+│   │   │               │   │   ├── IsoMessageCryptoService.java
+│   │   │               │   │   └── IsoMessageSecurityService.java
+│   │   │               │   └── service
+│   │   │               │       ├── InboundPacs002MessageService.java
+│   │   │               │       ├── IsoMessageQueryService.java
+│   │   │               │       ├── IsoMessageSecurityPolicyService.java
+│   │   │               │       ├── IsoMessageService.java
+│   │   │               │       └── IsoMessageValidationService.java
+│   │   │               ├── outbox
+│   │   │               │   ├── controller
+│   │   │               │   │   ├── OutboxEventController.java
+│   │   │               │   │   └── OutboxManualRetryController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── BankDispatchResult.java
+│   │   │               │   │   ├── BankIsoDispatchResponse.java
+│   │   │               │   │   ├── DispatchIsoMessageCommand.java
+│   │   │               │   │   ├── DispatchTransferCommand.java
+│   │   │               │   │   ├── OutboxEventItemResponse.java
+│   │   │               │   │   ├── OutboxEventListResponse.java
+│   │   │               │   │   └── OutboxManualRetryResponse.java
+│   │   │               │   ├── entity
+│   │   │               │   │   └── OutboxEventEntity.java
+│   │   │               │   ├── enums
+│   │   │               │   │   └── OutboxStatus.java
+│   │   │               │   ├── exception
+│   │   │               │   │   ├── OutboxEventNotFoundException.java
+│   │   │               │   │   └── OutboxManualRetryNotAllowedException.java
+│   │   │               │   ├── repository
+│   │   │               │   │   └── OutboxEventRepository.java
+│   │   │               │   ├── service
+│   │   │               │   │   ├── OutboxEventQueryService.java
+│   │   │               │   │   ├── OutboxIsoMessageDispatchService.java
+│   │   │               │   │   ├── OutboxManualRetryService.java
+│   │   │               │   │   ├── OutboxProcessorService.java
+│   │   │               │   │   ├── OutboxRecoveryService.java
+│   │   │               │   │   └── OutboxTransactionService.java
+│   │   │               │   └── worker
+│   │   │               │       ├── OutboxDispatchWorker.java
+│   │   │               │       └── OutboxRecoveryWorker.java
+│   │   │               ├── participant
+│   │   │               │   ├── controller
+│   │   │               │   │   └── ParticipantController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── CreateParticipantRequest.java
+│   │   │               │   │   ├── ParticipantListResponse.java
+│   │   │               │   │   ├── ParticipantResponse.java
+│   │   │               │   │   └── UpdateParticipantRequest.java
+│   │   │               │   ├── entity
+│   │   │               │   │   ├── ParticipantBankEntity.java
+│   │   │               │   │   └── ParticipantEntity.java
+│   │   │               │   ├── enums
+│   │   │               │   │   ├── ParticipantStatus.java
+│   │   │               │   │   └── ParticipantType.java
+│   │   │               │   ├── exception
+│   │   │               │   │   ├── ParticipantAlreadyExistsException.java
+│   │   │               │   │   ├── ParticipantNotFoundException.java
+│   │   │               │   │   └── ParticipantUnavailableException.java
+│   │   │               │   ├── repository
+│   │   │               │   │   ├── ParticipantBankRepository.java
+│   │   │               │   │   └── ParticipantRepository.java
+│   │   │               │   └── service
+│   │   │               │       ├── ParticipantManagementService.java
+│   │   │               │       └── ParticipantService.java
+│   │   │               ├── routing
+│   │   │               │   ├── controller
+│   │   │               │   │   └── RoutingRuleController.java
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── CreateRoutingRuleRequest.java
+│   │   │               │   │   ├── RoutingResolveResponse.java
+│   │   │               │   │   ├── RoutingRuleListResponse.java
+│   │   │               │   │   ├── RoutingRuleResponse.java
+│   │   │               │   │   └── UpdateRoutingRuleRequest.java
+│   │   │               │   ├── entity
+│   │   │               │   │   └── RoutingRuleEntity.java
+│   │   │               │   ├── exception
+│   │   │               │   │   ├── RoutingRuleAlreadyExistsException.java
+│   │   │               │   │   └── RoutingRuleNotFoundException.java
+│   │   │               │   ├── repository
+│   │   │               │   │   └── RoutingRuleRepository.java
+│   │   │               │   └── service
+│   │   │               │       ├── RoutingRuleManagementService.java
+│   │   │               │       └── RoutingService.java
+│   │   │               ├── SwitchingApplication.java
+│   │   │               └── transfer
+│   │   │                   ├── controller
+│   │   │                   │   ├── TransferController.java
+│   │   │                   │   ├── TransferInquiryController.java
+│   │   │                   │   ├── TransferListController.java
+│   │   │                   │   └── TransferTraceController.java
+│   │   │                   ├── dto
+│   │   │                   │   ├── CreateTransferRequest.java
+│   │   │                   │   ├── CreateTransferResponse.java
+│   │   │                   │   ├── TransferInquiryResponse.java
+│   │   │                   │   ├── TransferListItemResponse.java
+│   │   │                   │   ├── TransferListResponse.java
+│   │   │                   │   ├── TransferStatusHistoryItemResponse.java
+│   │   │                   │   ├── TransferTraceAuditItemResponse.java
+│   │   │                   │   ├── TransferTraceHistoryItemResponse.java
+│   │   │                   │   ├── TransferTraceIsoMessageItemResponse.java
+│   │   │                   │   ├── TransferTraceOutboxItemResponse.java
+│   │   │                   │   ├── TransferTraceResponse.java
+│   │   │                   │   └── TransferTraceTimelineItemResponse.java
+│   │   │                   ├── entity
+│   │   │                   │   ├── TransferEntity.java
+│   │   │                   │   └── TransferStatusHistoryEntity.java
+│   │   │                   ├── enums
+│   │   │                   │   └── TransferStatus.java
+│   │   │                   ├── exception
+│   │   │                   │   ├── InquiryAlreadyUsedException.java
+│   │   │                   │   ├── InquiryValidationException.java
+│   │   │                   │   └── TransferNotFoundException.java
+│   │   │                   ├── repository
+│   │   │                   │   ├── TransferRepository.java
+│   │   │                   │   └── TransferStatusHistoryRepository.java
+│   │   │                   └── service
+│   │   │                       ├── CreateTransferService.java
+│   │   │                       ├── TransferInquiryService.java
+│   │   │                       ├── TransferListService.java
+│   │   │                       └── TransferTraceService.java
+│   │   └── resources
+│   │       ├── application.properties
+│   │       ├── application.yml
+│   │       ├── db
+│   │       │   └── migration
+│   │       │       ├── V1__init_switching_tables.sql
+│   │       │       ├── V2__seed_bank_and_routing.sql
+│   │       │       ├── V3__add_inquiry_tables.sql
+│   │       │       ├── V4__add_unique_constraint_transfers_inquiry_ref.sql
+│   │       │       ├── V5__add_updated_at_to_outbox_events.sql
+│   │       │       ├── V6__create_iso_messages.sql
+│   │       │       ├── V7__add_updated_at_to_idempotency_records.sql
+│   │       │       ├── V8__create_participants_and_routing_rules.sql
+│   │       │       └── V9__create_connector_configs.sql
+│   │       └── static
+│   │           └── index.html
+│   └── test
+│       └── java
+│           └── com
+│               └── example
+│                   └── switching
+│                       ├── connector
+│                       │   └── service
+│                       │       └── ConnectorConfigManagementServiceTest.java
+│                       ├── participant
+│                       │   └── service
+│                       │       └── ParticipantManagementServiceTest.java
+│                       ├── routing
+│                       │   └── service
+│                       │       └── RoutingRuleManagementServiceTest.java
+│                       └── SwitchingApplicationTests.java
+├── String.txt
+├── target
+│   ├── classes
+│   │   ├── application.properties
+│   │   ├── application.yml
+│   │   ├── com
+│   │   │   └── example
+│   │   │       └── switching
+│   │   │           ├── audit
+│   │   │           │   ├── controller
+│   │   │           │   │   └── AuditLogController.class
+│   │   │           │   ├── dto
+│   │   │           │   │   ├── AuditLogItemResponse.class
+│   │   │           │   │   └── AuditLogListResponse.class
+│   │   │           │   ├── entity
+│   │   │           │   │   └── AuditLogEntity.class
+│   │   │           │   ├── repository
+│   │   │           │   │   ├── AuditLogRepository.class
+│   │   │           │   │   └── AuditLogSearchRow.class
+│   │   │           │   └── service
+│   │   │           │       ├── AuditLogQueryService.class
+│   │   │           │       └── AuditLogService.class
+│   │   │           ├── common
+│   │   │           │   ├── dto
+│   │   │           │   │   └── ApiErrorResponse.class
+│   │   │           │   ├── error
+│   │   │           │   │   ├── ErrorCatalog.class
+│   │   │           │   │   ├── ErrorCategory.class
+│   │   │           │   │   ├── ErrorClassifier.class
+│   │   │           │   │   ├── ErrorLayer.class
+│   │   │           │   │   └── ErrorPhase.class
+│   │   │           │   ├── exception
+│   │   │           │   │   └── GlobalExceptionHandler.class
+│   │   │           │   ├── filter
+│   │   │           │   │   └── RequestIdFilter.class
+│   │   │           │   └── util
+│   │   │           │       ├── RequestHashUtil.class
+│   │   │           │       └── TransferRefGenerator.class
+│   │   │           ├── config
+│   │   │           │   ├── JacksonConfig.class
+│   │   │           │   ├── JpaConfig.class
+│   │   │           │   ├── OpenApiConfig.class
+│   │   │           │   ├── SchedulingConfig.class
+│   │   │           │   └── WebConfig.class
+│   │   │           ├── connector
+│   │   │           │   ├── BankConnector.class
+│   │   │           │   ├── controller
+│   │   │           │   │   └── ConnectorConfigController.class
+│   │   │           │   ├── dto
+│   │   │           │   │   ├── ConnectorConfigListResponse.class
+│   │   │           │   │   ├── ConnectorConfigResponse.class
+│   │   │           │   │   ├── CreateConnectorConfigRequest.class
+│   │   │           │   │   └── UpdateConnectorConfigRequest.class
+│   │   │           │   ├── entity
+│   │   │           │   │   └── ConnectorConfigEntity.class
+│   │   │           │   ├── enums
+│   │   │           │   │   └── ConnectorType.class
+│   │   │           │   ├── exception
+│   │   │           │   │   ├── ConnectorConfigAlreadyExistsException.class
+│   │   │           │   │   └── ConnectorConfigNotFoundException.class
+│   │   │           │   ├── GenericHttpConnector.class
+│   │   │           │   ├── GenericMockConnector.class
+│   │   │           │   ├── GenericMqConnector.class
+│   │   │           │   ├── MockBankConnector.class
+│   │   │           │   ├── registry
+│   │   │           │   │   ├── ConnectorRegistry.class
+│   │   │           │   │   └── ConnectorRegistry$1.class
+│   │   │           │   ├── repository
+│   │   │           │   │   └── ConnectorConfigRepository.class
+│   │   │           │   └── service
+│   │   │           │       ├── ConnectorConfigManagementService.class
+│   │   │           │       └── ConnectorConfigService.class
+│   │   │           ├── dashboard
+│   │   │           │   ├── controller
+│   │   │           │   │   └── DashboardController.class
+│   │   │           │   ├── dto
+│   │   │           │   │   ├── DashboardOverviewResponse.class
+│   │   │           │   │   └── StatusCountResponse.class
+│   │   │           │   └── service
+│   │   │           │       └── DashboardOverviewService.class
+│   │   │           ├── demo
+│   │   │           │   ├── controller
+│   │   │           │   │   └── DemoFlowController.class
+│   │   │           │   ├── dto
+│   │   │           │   │   ├── DemoRequestFlowResponse.class
+│   │   │           │   │   ├── DemoResponseFlowResponse.class
+│   │   │           │   │   └── TransferTraceResponse.class
+│   │   │           │   └── service
+│   │   │           │       └── DemoFlowService.class
+│   │   │           ├── idempotency
+│   │   │           │   ├── entity
+│   │   │           │   │   └── IdempotencyRecordEntity.class
+│   │   │           │   ├── exception
+│   │   │           │   │   └── IdempotencyConflictException.class
+│   │   │           │   ├── repository
+│   │   │           │   │   └── IdempotencyRecordRepository.class
+│   │   │           │   └── service
+│   │   │           │       └── IdempotencyService.class
+│   │   │           ├── inquiry
+│   │   │           │   ├── controller
+│   │   │           │   │   ├── InquiryController.class
+│   │   │           │   │   └── InquiryTransferController.class
+│   │   │           │   ├── dto
+│   │   │           │   │   ├── CreateInquiryRequest.class
+│   │   │           │   │   ├── CreateInquiryResponse.class
+│   │   │           │   │   ├── InquiryResponse.class
+│   │   │           │   │   ├── InquiryStatusHistoryItemResponse.class
+│   │   │           │   │   ├── InquiryTransferItemResponse.class
+│   │   │           │   │   └── InquiryTransfersResponse.class
+│   │   │           │   ├── entity
+│   │   │           │   │   ├── InquiryEntity.class
+│   │   │           │   │   └── InquiryStatusHistoryEntity.class
+│   │   │           │   ├── enums
+│   │   │           │   │   └── InquiryStatus.class
+│   │   │           │   ├── exception
+│   │   │           │   │   └── InquiryNotFoundException.class
+│   │   │           │   ├── repository
+│   │   │           │   │   ├── InquiryRepository.class
+│   │   │           │   │   └── InquiryStatusHistoryRepository.class
+│   │   │           │   └── service
+│   │   │           │       ├── CreateInquiryService.class
+│   │   │           │       ├── InquiryLookupService.class
+│   │   │           │       └── InquiryTransferQueryService.class
+│   │   │           ├── iso
+│   │   │           │   ├── controller
+│   │   │           │   │   ├── IsoMessageController.class
+│   │   │           │   │   ├── IsoMessageSecurityController.class
+│   │   │           │   │   ├── IsoMessageSecurityPolicyController.class
+│   │   │           │   │   └── IsoMessageValidationController.class
+│   │   │           │   ├── dto
+│   │   │           │   │   ├── IsoMessageDetailResponse.class
+│   │   │           │   │   ├── IsoMessageItemResponse.class
+│   │   │           │   │   ├── IsoMessageListResponse.class
+│   │   │           │   │   ├── IsoMessageSecurityActionResponse.class
+│   │   │           │   │   ├── IsoMessageSecurityPolicyResponse.class
+│   │   │           │   │   ├── IsoMessageValidationActionResponse.class
+│   │   │           │   │   ├── IsoXmlValidationResult.class
+│   │   │           │   │   └── Pacs002ParseResult.class
+│   │   │           │   ├── entity
+│   │   │           │   │   └── IsoMessageEntity.class
+│   │   │           │   ├── enums
+│   │   │           │   │   ├── IsoMessageDirection.class
+│   │   │           │   │   ├── IsoMessageType.class
+│   │   │           │   │   ├── IsoSecurityStatus.class
+│   │   │           │   │   └── IsoValidationStatus.class
+│   │   │           │   ├── exception
+│   │   │           │   │   ├── IsoMessageCryptoException.class
+│   │   │           │   │   ├── IsoMessageInvalidStateException.class
+│   │   │           │   │   └── IsoMessageNotFoundException.class
+│   │   │           │   ├── mapper
+│   │   │           │   │   ├── Pacs002Mapper.class
+│   │   │           │   │   ├── Pacs002XmlBuilder.class
+│   │   │           │   │   ├── Pacs008Mapper.class
+│   │   │           │   │   ├── Pacs008XmlBuilder.class
+│   │   │           │   │   └── Pacs028Mapper.class
+│   │   │           │   ├── parser
+│   │   │           │   │   ├── IsoXmlParser.class
+│   │   │           │   │   ├── IsoXmlValidator.class
+│   │   │           │   │   └── Pacs002Parser.class
+│   │   │           │   ├── repository
+│   │   │           │   │   └── IsoMessageRepository.class
+│   │   │           │   ├── security
+│   │   │           │   │   └── IsoMessageCryptoService.class
+│   │   │           │   └── service
+│   │   │           │       ├── InboundPacs002MessageService.class
+│   │   │           │       ├── IsoMessageQueryService.class
+│   │   │           │       ├── IsoMessageSecurityPolicyService.class
+│   │   │           │       ├── IsoMessageSecurityService.class
+│   │   │           │       ├── IsoMessageService.class
+│   │   │           │       └── IsoMessageValidationService.class
+│   │   │           ├── outbox
+│   │   │           │   ├── controller
+│   │   │           │   │   ├── OutboxEventController.class
+│   │   │           │   │   └── OutboxManualRetryController.class
+│   │   │           │   ├── dto
+│   │   │           │   │   ├── BankDispatchResult.class
+│   │   │           │   │   ├── BankIsoDispatchResponse.class
+│   │   │           │   │   ├── DispatchIsoMessageCommand.class
+│   │   │           │   │   ├── DispatchTransferCommand.class
+│   │   │           │   │   ├── OutboxEventItemResponse.class
+│   │   │           │   │   ├── OutboxEventListResponse.class
+│   │   │           │   │   └── OutboxManualRetryResponse.class
+│   │   │           │   ├── entity
+│   │   │           │   │   └── OutboxEventEntity.class
+│   │   │           │   ├── enums
+│   │   │           │   │   └── OutboxStatus.class
+│   │   │           │   ├── exception
+│   │   │           │   │   ├── OutboxEventNotFoundException.class
+│   │   │           │   │   └── OutboxManualRetryNotAllowedException.class
+│   │   │           │   ├── repository
+│   │   │           │   │   └── OutboxEventRepository.class
+│   │   │           │   ├── service
+│   │   │           │   │   ├── OutboxEventQueryService.class
+│   │   │           │   │   ├── OutboxIsoMessageDispatchService.class
+│   │   │           │   │   ├── OutboxManualRetryService.class
+│   │   │           │   │   ├── OutboxProcessorService.class
+│   │   │           │   │   ├── OutboxRecoveryService.class
+│   │   │           │   │   └── OutboxTransactionService.class
+│   │   │           │   └── worker
+│   │   │           │       ├── OutboxDispatchWorker.class
+│   │   │           │       └── OutboxRecoveryWorker.class
+│   │   │           ├── participant
+│   │   │           │   ├── controller
+│   │   │           │   │   └── ParticipantController.class
+│   │   │           │   ├── dto
+│   │   │           │   │   ├── CreateParticipantRequest.class
+│   │   │           │   │   ├── ParticipantListResponse.class
+│   │   │           │   │   ├── ParticipantResponse.class
+│   │   │           │   │   └── UpdateParticipantRequest.class
+│   │   │           │   ├── entity
+│   │   │           │   │   ├── ParticipantBankEntity.class
+│   │   │           │   │   └── ParticipantEntity.class
+│   │   │           │   ├── enums
+│   │   │           │   │   ├── ParticipantStatus.class
+│   │   │           │   │   └── ParticipantType.class
+│   │   │           │   ├── exception
+│   │   │           │   │   ├── ParticipantAlreadyExistsException.class
+│   │   │           │   │   ├── ParticipantNotFoundException.class
+│   │   │           │   │   └── ParticipantUnavailableException.class
+│   │   │           │   ├── repository
+│   │   │           │   │   ├── ParticipantBankRepository.class
+│   │   │           │   │   └── ParticipantRepository.class
+│   │   │           │   └── service
+│   │   │           │       ├── ParticipantManagementService.class
+│   │   │           │       └── ParticipantService.class
+│   │   │           ├── routing
+│   │   │           │   ├── controller
+│   │   │           │   │   └── RoutingRuleController.class
+│   │   │           │   ├── dto
+│   │   │           │   │   ├── CreateRoutingRuleRequest.class
+│   │   │           │   │   ├── RoutingResolveResponse.class
+│   │   │           │   │   ├── RoutingRuleListResponse.class
+│   │   │           │   │   ├── RoutingRuleResponse.class
+│   │   │           │   │   └── UpdateRoutingRuleRequest.class
+│   │   │           │   ├── entity
+│   │   │           │   │   └── RoutingRuleEntity.class
+│   │   │           │   ├── exception
+│   │   │           │   │   ├── RoutingRuleAlreadyExistsException.class
+│   │   │           │   │   └── RoutingRuleNotFoundException.class
+│   │   │           │   ├── repository
+│   │   │           │   │   └── RoutingRuleRepository.class
+│   │   │           │   └── service
+│   │   │           │       ├── RoutingRuleManagementService.class
+│   │   │           │       └── RoutingService.class
+│   │   │           ├── SwitchingApplication.class
+│   │   │           └── transfer
+│   │   │               ├── controller
+│   │   │               │   ├── TransferController.class
+│   │   │               │   ├── TransferInquiryController.class
+│   │   │               │   ├── TransferListController.class
+│   │   │               │   └── TransferTraceController.class
+│   │   │               ├── dto
+│   │   │               │   ├── CreateTransferRequest.class
+│   │   │               │   ├── CreateTransferResponse.class
+│   │   │               │   ├── TransferInquiryResponse.class
+│   │   │               │   ├── TransferListItemResponse.class
+│   │   │               │   ├── TransferListResponse.class
+│   │   │               │   ├── TransferStatusHistoryItemResponse.class
+│   │   │               │   ├── TransferTraceAuditItemResponse.class
+│   │   │               │   ├── TransferTraceHistoryItemResponse.class
+│   │   │               │   ├── TransferTraceIsoMessageItemResponse.class
+│   │   │               │   ├── TransferTraceOutboxItemResponse.class
+│   │   │               │   ├── TransferTraceResponse.class
+│   │   │               │   └── TransferTraceTimelineItemResponse.class
+│   │   │               ├── entity
+│   │   │               │   ├── TransferEntity.class
+│   │   │               │   └── TransferStatusHistoryEntity.class
+│   │   │               ├── enums
+│   │   │               │   └── TransferStatus.class
+│   │   │               ├── exception
+│   │   │               │   ├── InquiryAlreadyUsedException.class
+│   │   │               │   ├── InquiryValidationException.class
+│   │   │               │   └── TransferNotFoundException.class
+│   │   │               ├── repository
+│   │   │               │   ├── TransferRepository.class
+│   │   │               │   └── TransferStatusHistoryRepository.class
+│   │   │               └── service
+│   │   │                   ├── CreateTransferService.class
+│   │   │                   ├── TransferInquiryService.class
+│   │   │                   ├── TransferListService.class
+│   │   │                   └── TransferTraceService.class
+│   │   ├── db
+│   │   │   └── migration
+│   │   │       ├── V1__init_switching_tables.sql
+│   │   │       ├── V2__seed_bank_and_routing.sql
+│   │   │       ├── V3__add_inquiry_tables.sql
+│   │   │       ├── V4__add_unique_constraint_transfers_inquiry_ref.sql
+│   │   │       ├── V5__add_updated_at_to_outbox_events.sql
+│   │   │       ├── V6__create_iso_messages.sql
+│   │   │       ├── V7__add_updated_at_to_idempotency_records.sql
+│   │   │       ├── V8__create_participants_and_routing_rules.sql
+│   │   │       └── V9__create_connector_configs.sql
+│   │   └── static
+│   │       └── index.html
+│   ├── generated-sources
+│   │   └── annotations
+│   ├── generated-test-sources
+│   │   └── test-annotations
+│   ├── maven-status
+│   │   └── maven-compiler-plugin
+│   │       ├── compile
+│   │       │   └── default-compile
+│   │       │       ├── createdFiles.lst
+│   │       │       └── inputFiles.lst
+│   │       └── testCompile
+│   │           └── default-testCompile
+│   │               ├── createdFiles.lst
+│   │               └── inputFiles.lst
+│   └── test-classes
+│       └── com
+│           └── example
+│               └── switching
+│                   ├── connector
+│                   │   └── service
+│                   │       └── ConnectorConfigManagementServiceTest.class
+│                   ├── participant
+│                   │   └── service
+│                   │       └── ParticipantManagementServiceTest.class
+│                   ├── routing
+│                   │   └── service
+│                   │       └── RoutingRuleManagementServiceTest.class
+│                   └── SwitchingApplicationTests.class
+└── zibwWeOH
+
+226 directories, 421 files
