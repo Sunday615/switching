@@ -14,11 +14,18 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.example.switching.common.dto.ApiErrorResponse;
 import com.example.switching.common.error.ErrorCatalog;
 import com.example.switching.common.filter.RequestIdFilter;
+import com.example.switching.connector.exception.ConnectorConfigAlreadyExistsException;
+import com.example.switching.connector.exception.ConnectorConfigNotFoundException;
 import com.example.switching.idempotency.exception.IdempotencyConflictException;
 import com.example.switching.inquiry.exception.InquiryNotFoundException;
 import com.example.switching.iso.exception.IsoMessageCryptoException;
 import com.example.switching.iso.exception.IsoMessageInvalidStateException;
 import com.example.switching.iso.exception.IsoMessageNotFoundException;
+import com.example.switching.participant.exception.ParticipantAlreadyExistsException;
+import com.example.switching.participant.exception.ParticipantNotFoundException;
+import com.example.switching.participant.exception.ParticipantUnavailableException;
+import com.example.switching.routing.exception.RoutingRuleAlreadyExistsException;
+import com.example.switching.routing.exception.RoutingRuleNotFoundException;
 import com.example.switching.transfer.exception.InquiryAlreadyUsedException;
 import com.example.switching.transfer.exception.InquiryValidationException;
 import com.example.switching.transfer.exception.TransferNotFoundException;
@@ -176,6 +183,90 @@ public class GlobalExceptionHandler {
 
                 return buildResponse(
                                 ErrorCatalog.REQ_001,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(ParticipantAlreadyExistsException.class)
+        public ResponseEntity<ApiErrorResponse> handleParticipantAlreadyExists(
+                        ParticipantAlreadyExistsException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.PRT_003,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(RoutingRuleAlreadyExistsException.class)
+        public ResponseEntity<ApiErrorResponse> handleRoutingRuleAlreadyExists(
+                        RoutingRuleAlreadyExistsException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.RTE_002,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(ConnectorConfigAlreadyExistsException.class)
+        public ResponseEntity<ApiErrorResponse> handleConnectorConfigAlreadyExists(
+                        ConnectorConfigAlreadyExistsException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.CON_002,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(ParticipantNotFoundException.class)
+        public ResponseEntity<ApiErrorResponse> handleParticipantNotFound(
+                        ParticipantNotFoundException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.PRT_001,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(ParticipantUnavailableException.class)
+        public ResponseEntity<ApiErrorResponse> handleParticipantUnavailable(
+                        ParticipantUnavailableException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.PRT_002,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(RoutingRuleNotFoundException.class)
+        public ResponseEntity<ApiErrorResponse> handleRoutingRuleNotFound(
+                        RoutingRuleNotFoundException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.RTE_001,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(ConnectorConfigNotFoundException.class)
+        public ResponseEntity<ApiErrorResponse> handleConnectorConfigNotFound(
+                        ConnectorConfigNotFoundException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.CON_001,
                                 ex.getMessage(),
                                 request,
                                 null);

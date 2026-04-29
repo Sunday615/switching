@@ -2,6 +2,7 @@ package com.example.switching.connector;
 
 import java.util.UUID;
 
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import com.example.switching.connector.entity.ConnectorConfigEntity;
@@ -13,19 +14,27 @@ import com.example.switching.outbox.dto.DispatchIsoMessageCommand;
 import com.example.switching.outbox.dto.DispatchTransferCommand;
 
 /**
- * @deprecated Superseded by {@link GenericMockConnector}.
- * Kept as a reference only — no longer a Spring bean.
+ * Generic MOCK connector.
+ * <p>
+ * Handles all connectors whose connector_configs.connector_type = MOCK.
+ * Behaviour is driven entirely by {@link ConnectorConfigEntity}:
+ * <ul>
+ *   <li>enabled = false  → reject without PACS.002 (503)</li>
+ *   <li>force_reject = true → reject with PACS.002 RJCT using configured reason</li>
+ *   <li>otherwise         → accept with PACS.002 ACSC</li>
+ * </ul>
+ * This single class replaces the previous per-bank MockBankXConnector pattern
+ * and works for any number of member banks as long as their connector_type is MOCK.
  */
-@Deprecated
-public class MockBankConnector implements BankConnector {
+@Component
+public class GenericMockConnector implements BankConnector {
 
     private final Pacs002XmlBuilder pacs002XmlBuilder;
     private final ConnectorConfigService connectorConfigService;
 
-    public MockBankConnector(
+    public GenericMockConnector(
             Pacs002XmlBuilder pacs002XmlBuilder,
-            ConnectorConfigService connectorConfigService
-    ) {
+            ConnectorConfigService connectorConfigService) {
         this.pacs002XmlBuilder = pacs002XmlBuilder;
         this.connectorConfigService = connectorConfigService;
     }
@@ -37,8 +46,7 @@ public class MockBankConnector implements BankConnector {
                 externalReference(),
                 "MOCK_TRANSFER_ACCEPTED",
                 null,
-                null
-        );
+                null);
     }
 
     @Override
@@ -51,8 +59,7 @@ public class MockBankConnector implements BankConnector {
                     response.externalReference(),
                     response.responseMessage(),
                     null,
-                    null
-            );
+                    null);
         }
 
         return new BankDispatchResult(
@@ -60,63 +67,40 @@ public class MockBankConnector implements BankConnector {
                 response.externalReference(),
                 null,
                 response.responseCode(),
-                response.responseMessage()
-        );
+                response.responseMessage());
     }
 
     @Override
     public BankIsoDispatchResponse dispatchIsoMessageWithPacs002(DispatchIsoMessageCommand command) {
         if (command == null) {
-            return rejectedWithoutPacs002(
-                    "BANK-400",
-                    "DispatchIsoMessageCommand is null",
-                    null
-            );
+            return rejectedWithoutPacs002("BANK-400", "DispatchIsoMessageCommand is null", null);
         }
 
         if (!StringUtils.hasText(command.transferRef())) {
-            return rejectedWithoutPacs002(
-                    "BANK-400",
-                    "transferRef is required",
-                    null
-            );
+            return rejectedWithoutPacs002("BANK-400", "transferRef is required", null);
         }
 
         if (command.isoMessageId() == null) {
-            return rejectedWithoutPacs002(
-                    "BANK-400",
-                    "isoMessageId is required",
-                    command.transferRef()
-            );
+            return rejectedWithoutPacs002("BANK-400", "isoMessageId is required", command.transferRef());
         }
 
         if (!StringUtils.hasText(command.destinationBank())) {
-            return rejectedWithoutPacs002(
-                    "BANK-400",
-                    "destinationBank is required",
-                    command.transferRef()
-            );
+            return rejectedWithoutPacs002("BANK-400", "destinationBank is required", command.transferRef());
         }
 
         if (!StringUtils.hasText(command.encryptedPayload())) {
-            return rejectedWithoutPacs002(
-                    "BANK-400",
-                    "encryptedPayload is required",
-                    command.transferRef()
-            );
+            return rejectedWithoutPacs002("BANK-400", "encryptedPayload is required", command.transferRef());
         }
 
         ConnectorConfigEntity connectorConfig = connectorConfigService.resolveForDispatch(
                 command.connectorName(),
-                command.destinationBank()
-        );
+                command.destinationBank());
 
         if (!connectorConfig.enabled()) {
             return rejectedWithoutPacs002(
                     "BANK-503",
                     "Connector is disabled: " + connectorConfig.getConnectorName(),
-                    command.transferRef()
-            );
+                    command.transferRef());
         }
 
         if (connectorConfig.forceReject()) {
@@ -133,8 +117,7 @@ public class MockBankConnector implements BankConnector {
                     command.endToEndId(),
                     command.transferRef(),
                     reasonCode,
-                    reasonMessage
-            );
+                    reasonMessage);
 
             return new BankIsoDispatchResponse(
                     false,
@@ -142,15 +125,13 @@ public class MockBankConnector implements BankConnector {
                     "MOCK_CONNECTOR_REJECTED_AND_RETURNED_PACS002",
                     externalReference(),
                     pacs002Xml,
-                    "RJCT"
-            );
+                    "RJCT");
         }
 
         String pacs002Xml = pacs002XmlBuilder.buildAcceptedResponse(
                 command.messageId(),
                 command.endToEndId(),
-                command.transferRef()
-        );
+                command.transferRef());
 
         return new BankIsoDispatchResponse(
                 true,
@@ -158,27 +139,24 @@ public class MockBankConnector implements BankConnector {
                 "MOCK_CONNECTOR_ACCEPTED_AND_RETURNED_PACS002",
                 externalReference(),
                 pacs002Xml,
-                "ACSC"
-        );
+                "ACSC");
     }
 
     private BankIsoDispatchResponse rejectedWithoutPacs002(
             String responseCode,
             String responseMessage,
-            String transferRef
-    ) {
+            String transferRef) {
         return new BankIsoDispatchResponse(
                 false,
                 responseCode,
                 responseMessage,
                 transferRef == null ? null : externalReference(),
                 null,
-                "RJCT"
-        );
+                "RJCT");
     }
 
     private String externalReference() {
-        return "BANK-" + UUID.randomUUID()
+        return "MOCK-" + UUID.randomUUID()
                 .toString()
                 .replace("-", "")
                 .substring(0, 8)

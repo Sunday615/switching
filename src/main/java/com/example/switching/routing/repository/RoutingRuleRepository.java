@@ -11,19 +11,21 @@ import com.example.switching.routing.entity.RoutingRuleEntity;
 
 public interface RoutingRuleRepository extends JpaRepository<RoutingRuleEntity, Long> {
 
-    Optional<RoutingRuleEntity> findByRouteCode(String routeCode);
-
-    Optional<RoutingRuleEntity>
-    findFirstBySourceBankAndDestinationBankAndMessageTypeAndEnabledTrueOrderByPriorityAsc(
-            String sourceBank,
-            String destinationBank,
-            IsoMessageType messageType
-    );
-
     @Query("""
             SELECT r
             FROM RoutingRuleEntity r
-            ORDER BY r.sourceBank ASC, r.destinationBank ASC, r.messageType ASC, r.priority ASC
+            ORDER BY r.sourceBank ASC,
+                     r.destinationBank ASC,
+                     r.messageType ASC,
+                     r.priority ASC,
+                     r.routeCode ASC
             """)
     List<RoutingRuleEntity> findAllOrdered();
+
+    Optional<RoutingRuleEntity> findByRouteCode(String routeCode);
+
+    Optional<RoutingRuleEntity> findFirstBySourceBankAndDestinationBankAndMessageTypeAndEnabledTrueOrderByPriorityAsc(
+            String sourceBank,
+            String destinationBank,
+            IsoMessageType messageType);
 }
