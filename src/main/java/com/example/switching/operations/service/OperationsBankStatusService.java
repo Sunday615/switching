@@ -128,33 +128,33 @@ public class OperationsBankStatusService {
                 bankCode
         );
 
-        Long outboundTransferTotal = count(
-                "SELECT COUNT(*) FROM transfers WHERE source_bank = ?",
+               Long outboundTransferTotal = count(
+                "SELECT COUNT(*) FROM transfers WHERE source_bank_code = ?",
                 bankCode
         );
 
         Long outboundTransferSuccess = count(
-                "SELECT COUNT(*) FROM transfers WHERE source_bank = ? AND status = 'SUCCESS'",
+                "SELECT COUNT(*) FROM transfers WHERE source_bank_code = ? AND status = 'SUCCESS'",
                 bankCode
         );
 
         Long outboundTransferFailed = count(
-                "SELECT COUNT(*) FROM transfers WHERE source_bank = ? AND status = 'FAILED'",
+                "SELECT COUNT(*) FROM transfers WHERE source_bank_code = ? AND status = 'FAILED'",
                 bankCode
         );
 
         Long inboundTransferTotal = count(
-                "SELECT COUNT(*) FROM transfers WHERE destination_bank = ?",
+                "SELECT COUNT(*) FROM transfers WHERE destination_bank_code = ?",
                 bankCode
         );
 
         Long inboundTransferSuccess = count(
-                "SELECT COUNT(*) FROM transfers WHERE destination_bank = ? AND status = 'SUCCESS'",
+                "SELECT COUNT(*) FROM transfers WHERE destination_bank_code = ? AND status = 'SUCCESS'",
                 bankCode
         );
 
         Long inboundTransferFailed = count(
-                "SELECT COUNT(*) FROM transfers WHERE destination_bank = ? AND status = 'FAILED'",
+                "SELECT COUNT(*) FROM transfers WHERE destination_bank_code = ? AND status = 'FAILED'",
                 bankCode
         );
 
@@ -164,7 +164,7 @@ public class OperationsBankStatusService {
                 FROM outbox_events o
                 JOIN transfers t ON t.transfer_ref = o.transfer_ref
                 WHERE o.status = 'FAILED'
-                  AND (t.source_bank = ? OR t.destination_bank = ?)
+                  AND (t.source_bank_code = ? OR t.destination_bank_code = ?)
                 """,
                 bankCode,
                 bankCode
@@ -176,7 +176,7 @@ public class OperationsBankStatusService {
                 FROM outbox_events o
                 JOIN transfers t ON t.transfer_ref = o.transfer_ref
                 WHERE o.status = 'PENDING'
-                  AND (t.source_bank = ? OR t.destination_bank = ?)
+                  AND (t.source_bank_code = ? OR t.destination_bank_code = ?)
                 """,
                 bankCode,
                 bankCode
@@ -188,19 +188,19 @@ public class OperationsBankStatusService {
                 FROM outbox_events o
                 JOIN transfers t ON t.transfer_ref = o.transfer_ref
                 WHERE o.status = 'PROCESSING'
-                  AND (t.source_bank = ? OR t.destination_bank = ?)
+                  AND (t.source_bank_code = ? OR t.destination_bank_code = ?)
                 """,
                 bankCode,
                 bankCode
         );
 
         LocalDateTime lastOutboundTransferAt = dateTime(
-                "SELECT MAX(created_at) FROM transfers WHERE source_bank = ?",
+                "SELECT MAX(created_at) FROM transfers WHERE source_bank_code = ?",
                 bankCode
         );
 
         LocalDateTime lastInboundTransferAt = dateTime(
-                "SELECT MAX(created_at) FROM transfers WHERE destination_bank = ?",
+                "SELECT MAX(created_at) FROM transfers WHERE destination_bank_code = ?",
                 bankCode
         );
 
