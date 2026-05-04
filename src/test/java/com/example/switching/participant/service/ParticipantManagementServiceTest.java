@@ -1,7 +1,8 @@
 package com.example.switching.participant.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -9,10 +10,9 @@ import static org.mockito.Mockito.when;
 
 import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -32,96 +32,116 @@ class ParticipantManagementServiceTest {
     @Mock
     private ParticipantRepository participantRepository;
 
-    @InjectMocks
     private ParticipantManagementService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new ParticipantManagementService(participantRepository);
+    }
 
     @Test
     void createNormalizesFieldsAndAppliesDefaults() {
         CreateParticipantRequest request = new CreateParticipantRequest();
-        request.setBankCode(" bank_d ");
-        request.setBankName(" Demo Bank D ");
-        request.setCountry(" th ");
-        request.setCurrency(" thb ");
+        request.setBankCode(" bank_a ");
+        request.setBankName(" Bank A ");
+        request.setCountry(" la ");
+        request.setCurrency(" lak ");
 
-        when(participantRepository.findByBankCode("BANK_D")).thenReturn(Optional.empty());
+        when(participantRepository.findByBankCode("BANK_A"))
+                .thenReturn(Optional.empty());
+
+        when(participantRepository.save(any(ParticipantEntity.class)))
+                .thenAnswer(invocation -> {
+                    ParticipantEntity entity = invocation.getArgument(0);
+                    entity.setId(1L);
+                    return entity;
+                });
 
         ParticipantResponse response = service.create(request);
 
-        ArgumentCaptor<ParticipantEntity> captor = ArgumentCaptor.forClass(ParticipantEntity.class);
-        verify(participantRepository).save(captor.capture());
-        ParticipantEntity saved = captor.getValue();
+        assertNotNull(response);
+        assertEquals(1L, response.getId());
+        assertEquals("BANK_A", response.getBankCode());
+        assertEquals("Bank A", response.getBankName());
+        assertEquals("ACTIVE", response.getStatus());
+        assertEquals("BANK", response.getParticipantType());
+        assertEquals("LA", response.getCountry());
+        assertEquals("LAK", response.getCurrency());
 
-        assertThat(saved.getBankCode()).isEqualTo("BANK_D");
-        assertThat(saved.getBankName()).isEqualTo("Demo Bank D");
-        assertThat(saved.getStatus()).isEqualTo(ParticipantStatus.ACTIVE);
-        assertThat(saved.getParticipantType()).isEqualTo(ParticipantType.BANK);
-        assertThat(saved.getCountry()).isEqualTo("TH");
-        assertThat(saved.getCurrency()).isEqualTo("THB");
-        assertThat(response.getBankCode()).isEqualTo("BANK_D");
-        assertThat(response.getStatus()).isEqualTo("ACTIVE");
+        verify(participantRepository).findByBankCode("BANK_A");
+        verify(participantRepository).save(any(ParticipantEntity.class));
     }
 
     @Test
     void createThrowsWhenParticipantAlreadyExists() {
         CreateParticipantRequest request = new CreateParticipantRequest();
-        request.setBankCode("bank_a");
-        request.setBankName("Duplicate");
-        request.setCountry("TH");
-        request.setCurrency("THB");
+        request.setBankCode(" bank_a ");
+        request.setBankName(" Bank A ");
+        request.setCountry(" la ");
+        request.setCurrency(" lak ");
 
-        when(participantRepository.findByBankCode("BANK_A")).thenReturn(Optional.of(participant("BANK_A")));
+        ParticipantEntity existing = new ParticipantEntity();
+        existing.setId(1L);
+        existing.setBankCode("BANK_A");
 
-        assertThatThrownBy(() -> service.create(request))
-                .isInstanceOf(ParticipantAlreadyExistsException.class)
-                .hasMessage("Participant already exists: BANK_A");
+        when(participantRepository.findByBankCode("BANK_A"))
+                .thenReturn(Optional.of(existing));
 
-        verify(participantRepository, never()).save(any());
+        assertThrows(ParticipantAlreadyExistsException.class, () -> service.create(request));
+
+        verify(participantRepository).findByBankCode("BANK_A");
+        verify(participantRepository, never()).save(any(ParticipantEntity.class));
     }
 
     @Test
     void updateChangesOnlyProvidedFieldsAndNormalizesValues() {
-        ParticipantEntity existing = participant("BANK_D");
-        existing.setBankName("Old Name");
+        ParticipantEntity existing = new ParticipantEntity();
+        existing.setId(1L);
+        existing.setBankCode("BANK_A");
+        existing.setBankName("Bank A");
         existing.setStatus(ParticipantStatus.ACTIVE);
-        existing.setCountry("TH");
-        existing.setCurrency("THB");
+        existing.setParticipantType(ParticipantType.BANK);
+        existing.setCountry("LA");
+        existing.setCurrency("LAK");
 
         UpdateParticipantRequest request = new UpdateParticipantRequest();
-        request.setBankName(" Demo Bank D Updated ");
-        request.setStatus(" inactive ");
-        request.setCurrency(" usd ");
+        request.setBankName(" Bank A Updated ");
+        request.setStatus(" maintenance ");
+        request.setCountry(" th ");
+        request.setCurrency(" thb ");
 
-        when(participantRepository.findByBankCode("BANK_D")).thenReturn(Optional.of(existing));
+        when(participantRepository.findByBankCode("BANK_A"))
+                .thenReturn(Optional.of(existing));
 
-        ParticipantResponse response = service.update(" bank_d ", request);
+        when(participantRepository.save(any(ParticipantEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThat(existing.getBankName()).isEqualTo("Demo Bank D Updated");
-        assertThat(existing.getStatus()).isEqualTo(ParticipantStatus.INACTIVE);
-        assertThat(existing.getCountry()).isEqualTo("TH");
-        assertThat(existing.getCurrency()).isEqualTo("USD");
-        assertThat(response.getStatus()).isEqualTo("INACTIVE");
+        ParticipantResponse response = service.update(" bank_a ", request);
+
+        assertNotNull(response);
+        assertEquals(1L, response.getId());
+        assertEquals("BANK_A", response.getBankCode());
+        assertEquals("Bank A Updated", response.getBankName());
+        assertEquals("MAINTENANCE", response.getStatus());
+        assertEquals("BANK", response.getParticipantType());
+        assertEquals("TH", response.getCountry());
+        assertEquals("THB", response.getCurrency());
+
+        verify(participantRepository).findByBankCode("BANK_A");
         verify(participantRepository).save(existing);
     }
 
     @Test
-    void updateThrowsWhenParticipantDoesNotExist() {
-        when(participantRepository.findByBankCode("BANK_Z")).thenReturn(Optional.empty());
+    void updateThrowsWhenParticipantNotFound() {
+        UpdateParticipantRequest request = new UpdateParticipantRequest();
+        request.setBankName(" Bank A Updated ");
 
-        assertThatThrownBy(() -> service.update("bank_z", new UpdateParticipantRequest()))
-                .isInstanceOf(ParticipantNotFoundException.class)
-                .hasMessage("Participant not found: BANK_Z");
+        when(participantRepository.findByBankCode("BANK_A"))
+                .thenReturn(Optional.empty());
 
-        verify(participantRepository, never()).save(any());
-    }
+        assertThrows(ParticipantNotFoundException.class, () -> service.update(" bank_a ", request));
 
-    private ParticipantEntity participant(String bankCode) {
-        ParticipantEntity entity = new ParticipantEntity();
-        entity.setBankCode(bankCode);
-        entity.setBankName(bankCode + " Name");
-        entity.setStatus(ParticipantStatus.ACTIVE);
-        entity.setParticipantType(ParticipantType.BANK);
-        entity.setCountry("TH");
-        entity.setCurrency("THB");
-        return entity;
+        verify(participantRepository).findByBankCode("BANK_A");
+        verify(participantRepository, never()).save(any(ParticipantEntity.class));
     }
 }

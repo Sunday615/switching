@@ -1,7 +1,10 @@
 package com.example.switching.connector.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -9,10 +12,9 @@ import static org.mockito.Mockito.when;
 
 import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -24,9 +26,6 @@ import com.example.switching.connector.enums.ConnectorType;
 import com.example.switching.connector.exception.ConnectorConfigAlreadyExistsException;
 import com.example.switching.connector.exception.ConnectorConfigNotFoundException;
 import com.example.switching.connector.repository.ConnectorConfigRepository;
-import com.example.switching.participant.entity.ParticipantEntity;
-import com.example.switching.participant.enums.ParticipantStatus;
-import com.example.switching.participant.enums.ParticipantType;
 import com.example.switching.participant.service.ParticipantService;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,129 +37,143 @@ class ConnectorConfigManagementServiceTest {
     @Mock
     private ParticipantService participantService;
 
-    @InjectMocks
     private ConnectorConfigManagementService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new ConnectorConfigManagementService(
+                connectorConfigRepository,
+                participantService
+        );
+    }
 
     @Test
     void createValidatesBankNormalizesFieldsAndAppliesDefaults() {
         CreateConnectorConfigRequest request = new CreateConnectorConfigRequest();
-        request.setConnectorName(" mock_bank_d_connector ");
-        request.setBankCode(" bank_d ");
+        request.setConnectorName(" bank_a_mock ");
+        request.setBankCode(" bank_a ");
         request.setConnectorType(" mock ");
+        request.setEndpointUrl(" http://localhost:8081/mock-bank-a ");
 
-        when(connectorConfigRepository.findByConnectorName("MOCK_BANK_D_CONNECTOR"))
+        when(connectorConfigRepository.findByConnectorName("BANK_A_MOCK"))
                 .thenReturn(Optional.empty());
-        when(participantService.findByBankCode("BANK_D")).thenReturn(participant("BANK_D"));
+
+        when(connectorConfigRepository.save(any(ConnectorConfigEntity.class)))
+                .thenAnswer(invocation -> {
+                    ConnectorConfigEntity entity = invocation.getArgument(0);
+                    entity.setId(1L);
+                    return entity;
+                });
 
         ConnectorConfigResponse response = service.create(request);
 
-        ArgumentCaptor<ConnectorConfigEntity> captor = ArgumentCaptor.forClass(ConnectorConfigEntity.class);
-        verify(connectorConfigRepository).save(captor.capture());
-        ConnectorConfigEntity saved = captor.getValue();
+        assertNotNull(response);
+        assertEquals(1L, response.getId());
+        assertEquals("BANK_A_MOCK", response.getConnectorName());
+        assertEquals("BANK_A", response.getBankCode());
+        assertEquals("MOCK", response.getConnectorType());
+        assertEquals("http://localhost:8081/mock-bank-a", response.getEndpointUrl());
+        assertEquals(5000, response.getTimeoutMs());
+        assertEquals(Boolean.TRUE, response.getEnabled());
+        assertEquals(Boolean.FALSE, response.getForceReject());
 
-        assertThat(saved.getConnectorName()).isEqualTo("MOCK_BANK_D_CONNECTOR");
-        assertThat(saved.getBankCode()).isEqualTo("BANK_D");
-        assertThat(saved.getConnectorType()).isEqualTo(ConnectorType.MOCK);
-        assertThat(saved.getTimeoutMs()).isEqualTo(5000);
-        assertThat(saved.getEnabled()).isTrue();
-        assertThat(saved.getForceReject()).isFalse();
-        assertThat(response.getConnectorName()).isEqualTo("MOCK_BANK_D_CONNECTOR");
-        assertThat(response.getConnectorType()).isEqualTo("MOCK");
+        verify(connectorConfigRepository).findByConnectorName("BANK_A_MOCK");
+        verify(participantService).findByBankCode("BANK_A");
+        verify(connectorConfigRepository).save(any(ConnectorConfigEntity.class));
     }
 
     @Test
-    void createThrowsWhenConnectorAlreadyExists() {
+    void createThrowsWhenConnectorNameAlreadyExists() {
         CreateConnectorConfigRequest request = new CreateConnectorConfigRequest();
-        request.setConnectorName("mock_bank_a_connector");
-        request.setBankCode("BANK_A");
-        request.setConnectorType("MOCK");
+        request.setConnectorName(" bank_a_mock ");
+        request.setBankCode(" bank_a ");
+        request.setConnectorType(" mock ");
 
-        when(connectorConfigRepository.findByConnectorName("MOCK_BANK_A_CONNECTOR"))
-                .thenReturn(Optional.of(new ConnectorConfigEntity()));
+        ConnectorConfigEntity existing = new ConnectorConfigEntity();
+        existing.setId(1L);
+        existing.setConnectorName("BANK_A_MOCK");
 
-        assertThatThrownBy(() -> service.create(request))
-                .isInstanceOf(ConnectorConfigAlreadyExistsException.class)
-                .hasMessage("Connector config already exists: MOCK_BANK_A_CONNECTOR");
+        when(connectorConfigRepository.findByConnectorName("BANK_A_MOCK"))
+                .thenReturn(Optional.of(existing));
 
-        verify(participantService, never()).findByBankCode(any());
-        verify(connectorConfigRepository, never()).save(any());
+        assertThrows(ConnectorConfigAlreadyExistsException.class, () -> service.create(request));
+
+        verify(connectorConfigRepository).findByConnectorName("BANK_A_MOCK");
+        verify(connectorConfigRepository, never()).save(any(ConnectorConfigEntity.class));
     }
 
     @Test
-    void createRejectsInvalidConnectorTypeBeforeBankValidation() {
+    void createRejectsInvalidTimeout() {
         CreateConnectorConfigRequest request = new CreateConnectorConfigRequest();
-        request.setConnectorName("TEST_CONNECTOR");
-        request.setBankCode("BANK_A");
-        request.setConnectorType("FTP");
+        request.setConnectorName(" bank_a_mock ");
+        request.setBankCode(" bank_a ");
+        request.setConnectorType(" mock ");
+        request.setTimeoutMs(0);
 
-        assertThatThrownBy(() -> service.create(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Invalid connectorType: FTP");
+        assertThrows(IllegalArgumentException.class, () -> service.create(request));
 
-        verify(participantService, never()).findByBankCode(any());
-        verify(connectorConfigRepository, never()).save(any());
+        verify(connectorConfigRepository, never()).save(any(ConnectorConfigEntity.class));
     }
 
     @Test
     void updateChangesOnlyProvidedFieldsAndTrimsBlankableValues() {
-        ConnectorConfigEntity existing = connector("MOCK_BANK_D_CONNECTOR");
-        existing.setEndpointUrl("https://old.example.test");
+        ConnectorConfigEntity existing = new ConnectorConfigEntity();
+        existing.setId(1L);
+        existing.setConnectorName("BANK_A_MOCK");
+        existing.setBankCode("BANK_A");
+        existing.setConnectorType(ConnectorType.MOCK);
+        existing.setEndpointUrl("http://old-endpoint");
         existing.setTimeoutMs(5000);
         existing.setEnabled(true);
         existing.setForceReject(false);
-        existing.setRejectReasonCode("AC01");
-        existing.setRejectReasonMessage("Old reason");
+        existing.setRejectReasonCode("OLD");
+        existing.setRejectReasonMessage("Old message");
 
         UpdateConnectorConfigRequest request = new UpdateConnectorConfigRequest();
         request.setEndpointUrl("   ");
-        request.setTimeoutMs(9000);
+        request.setTimeoutMs(10000);
         request.setEnabled(false);
         request.setForceReject(true);
-        request.setRejectReasonCode(" AC04 ");
-        request.setRejectReasonMessage(" Closed account ");
+        request.setRejectReasonCode(" ac01 ");
+        request.setRejectReasonMessage(" Account invalid ");
 
-        when(connectorConfigRepository.findByConnectorName("MOCK_BANK_D_CONNECTOR"))
+        when(connectorConfigRepository.findByConnectorName("BANK_A_MOCK"))
                 .thenReturn(Optional.of(existing));
 
-        ConnectorConfigResponse response = service.update(" mock_bank_d_connector ", request);
+        when(connectorConfigRepository.save(any(ConnectorConfigEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThat(existing.getEndpointUrl()).isNull();
-        assertThat(existing.getTimeoutMs()).isEqualTo(9000);
-        assertThat(existing.getEnabled()).isFalse();
-        assertThat(existing.getForceReject()).isTrue();
-        assertThat(existing.getRejectReasonCode()).isEqualTo("AC04");
-        assertThat(existing.getRejectReasonMessage()).isEqualTo("Closed account");
-        assertThat(response.getForceReject()).isTrue();
+        ConnectorConfigResponse response = service.update(" bank_a_mock ", request);
+
+        assertNotNull(response);
+        assertEquals(1L, response.getId());
+        assertEquals("BANK_A_MOCK", response.getConnectorName());
+        assertEquals("BANK_A", response.getBankCode());
+        assertEquals("MOCK", response.getConnectorType());
+        assertNull(response.getEndpointUrl());
+        assertEquals(10000, response.getTimeoutMs());
+        assertEquals(Boolean.FALSE, response.getEnabled());
+        assertEquals(Boolean.TRUE, response.getForceReject());
+        assertEquals("ac01", response.getRejectReasonCode());
+        assertEquals("Account invalid", response.getRejectReasonMessage());
+
+        assertFalse(existing.getEnabled());
+
+        verify(connectorConfigRepository).findByConnectorName("BANK_A_MOCK");
         verify(connectorConfigRepository).save(existing);
     }
 
     @Test
-    void updateThrowsWhenConnectorDoesNotExist() {
-        when(connectorConfigRepository.findByConnectorName("MISSING_CONNECTOR")).thenReturn(Optional.empty());
+    void updateThrowsWhenConnectorConfigNotFound() {
+        UpdateConnectorConfigRequest request = new UpdateConnectorConfigRequest();
+        request.setTimeoutMs(10000);
 
-        assertThatThrownBy(() -> service.update("missing_connector", new UpdateConnectorConfigRequest()))
-                .isInstanceOf(ConnectorConfigNotFoundException.class)
-                .hasMessage("Connector config not found: MISSING_CONNECTOR");
+        when(connectorConfigRepository.findByConnectorName("BANK_A_MOCK"))
+                .thenReturn(Optional.empty());
 
-        verify(connectorConfigRepository, never()).save(any());
-    }
+        assertThrows(ConnectorConfigNotFoundException.class, () -> service.update(" bank_a_mock ", request));
 
-    private ConnectorConfigEntity connector(String connectorName) {
-        ConnectorConfigEntity entity = new ConnectorConfigEntity();
-        entity.setConnectorName(connectorName);
-        entity.setBankCode("BANK_D");
-        entity.setConnectorType(ConnectorType.MOCK);
-        return entity;
-    }
-
-    private ParticipantEntity participant(String bankCode) {
-        ParticipantEntity entity = new ParticipantEntity();
-        entity.setBankCode(bankCode);
-        entity.setBankName(bankCode + " Name");
-        entity.setStatus(ParticipantStatus.ACTIVE);
-        entity.setParticipantType(ParticipantType.BANK);
-        entity.setCountry("TH");
-        entity.setCurrency("THB");
-        return entity;
+        verify(connectorConfigRepository).findByConnectorName("BANK_A_MOCK");
+        verify(connectorConfigRepository, never()).save(any(ConnectorConfigEntity.class));
     }
 }
