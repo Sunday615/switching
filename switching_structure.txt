@@ -1,7 +1,8 @@
 .
+├── Dockerfile
+├── PROJECT_DEV_STATUS_SUMMARY.md
 ├── boot.log
 ├── docker-compose.yml
-├── Dockerfile
 ├── docs
 │   └── diagrams
 │       └── switching-kafka-iso20022-flow-english.png
@@ -18,6 +19,7 @@
 │   │   │   └── com
 │   │   │       └── example
 │   │   │           └── switching
+│   │   │               ├── SwitchingApplication.java
 │   │   │               ├── audit
 │   │   │               │   ├── controller
 │   │   │               │   │   └── AuditLogController.java
@@ -56,6 +58,10 @@
 │   │   │               │   └── WebConfig.java
 │   │   │               ├── connector
 │   │   │               │   ├── BankConnector.java
+│   │   │               │   ├── GenericHttpConnector.java
+│   │   │               │   ├── GenericMockConnector.java
+│   │   │               │   ├── GenericMqConnector.java
+│   │   │               │   ├── MockBankConnector.java
 │   │   │               │   ├── controller
 │   │   │               │   │   └── ConnectorConfigController.java
 │   │   │               │   ├── dto
@@ -70,10 +76,6 @@
 │   │   │               │   ├── exception
 │   │   │               │   │   ├── ConnectorConfigAlreadyExistsException.java
 │   │   │               │   │   └── ConnectorConfigNotFoundException.java
-│   │   │               │   ├── GenericHttpConnector.java
-│   │   │               │   ├── GenericMockConnector.java
-│   │   │               │   ├── GenericMqConnector.java
-│   │   │               │   ├── MockBankConnector.java
 │   │   │               │   ├── registry
 │   │   │               │   │   └── ConnectorRegistry.java
 │   │   │               │   ├── repository
@@ -172,14 +174,82 @@
 │   │   │               │   ├── repository
 │   │   │               │   │   └── IsoMessageRepository.java
 │   │   │               │   ├── security
-│   │   │               │   │   ├── IsoMessageCryptoService.java
-│   │   │               │   │   └── IsoMessageSecurityService.java
+│   │   │               │   │   └── IsoMessageCryptoService.java
 │   │   │               │   └── service
 │   │   │               │       ├── InboundPacs002MessageService.java
 │   │   │               │       ├── IsoMessageQueryService.java
 │   │   │               │       ├── IsoMessageSecurityPolicyService.java
+│   │   │               │       ├── IsoMessageSecurityService.java
 │   │   │               │       ├── IsoMessageService.java
 │   │   │               │       └── IsoMessageValidationService.java
+│   │   │               ├── operations
+│   │   │               │   ├── controller
+│   │   │               │   │   ├── OperationsAuditLogQueryController.java
+│   │   │               │   │   ├── OperationsBankOnboardingController.java
+│   │   │               │   │   ├── OperationsBankStatusController.java
+│   │   │               │   │   ├── OperationsConnectorController.java
+│   │   │               │   │   ├── OperationsDashboardSummaryController.java
+│   │   │               │   │   ├── OperationsHealthController.java
+│   │   │               │   │   ├── OperationsIsoMessageQueryController.java
+│   │   │               │   │   ├── OperationsOutboxFailureController.java
+│   │   │               │   │   ├── OperationsOutboxFailureRetryAllController.java
+│   │   │               │   │   ├── OperationsOutboxMarkReviewedController.java
+│   │   │               │   │   ├── OperationsOutboxStuckController.java
+│   │   │               │   │   ├── OperationsOutboxStuckRecoverController.java
+│   │   │               │   │   ├── OperationsTransactionQueryController.java
+│   │   │               │   │   └── src
+│   │   │               │   │       └── main
+│   │   │               │   │           └── java
+│   │   │               │   │               └── com
+│   │   │               │   │                   └── example
+│   │   │               │   │                       └── switching
+│   │   │               │   │                           └── operations
+│   │   │               │   │                               └── controller
+│   │   │               │   ├── dto
+│   │   │               │   │   ├── OperationsAuditLogItemResponse.java
+│   │   │               │   │   ├── OperationsAuditLogListResponse.java
+│   │   │               │   │   ├── OperationsBankOnboardingRequest.java
+│   │   │               │   │   ├── OperationsBankOnboardingResponse.java
+│   │   │               │   │   ├── OperationsBankStatusItemResponse.java
+│   │   │               │   │   ├── OperationsBankStatusListResponse.java
+│   │   │               │   │   ├── OperationsConnectorHealthItemResponse.java
+│   │   │               │   │   ├── OperationsConnectorHealthListResponse.java
+│   │   │               │   │   ├── OperationsConnectorTestResponse.java
+│   │   │               │   │   ├── OperationsDashboardSummaryResponse.java
+│   │   │               │   │   ├── OperationsGenerateRouteItemResponse.java
+│   │   │               │   │   ├── OperationsGenerateRoutesForBankRequest.java
+│   │   │               │   │   ├── OperationsGenerateRoutesForBankResponse.java
+│   │   │               │   │   ├── OperationsHealthResponse.java
+│   │   │               │   │   ├── OperationsIsoMessageItemResponse.java
+│   │   │               │   │   ├── OperationsIsoMessageListResponse.java
+│   │   │               │   │   ├── OperationsOutboxFailureItemResponse.java
+│   │   │               │   │   ├── OperationsOutboxFailureListResponse.java
+│   │   │               │   │   ├── OperationsOutboxFailureRetryAllResponse.java
+│   │   │               │   │   ├── OperationsOutboxFailureRetryItemResponse.java
+│   │   │               │   │   ├── OperationsOutboxMarkReviewedRequest.java
+│   │   │               │   │   ├── OperationsOutboxMarkReviewedResponse.java
+│   │   │               │   │   ├── OperationsOutboxStuckItemResponse.java
+│   │   │               │   │   ├── OperationsOutboxStuckListResponse.java
+│   │   │               │   │   ├── OperationsOutboxStuckRecoverAllResponse.java
+│   │   │               │   │   ├── OperationsOutboxStuckRecoverItemResponse.java
+│   │   │               │   │   ├── OperationsTransactionItemResponse.java
+│   │   │               │   │   └── OperationsTransactionListResponse.java
+│   │   │               │   └── service
+│   │   │               │       ├── OperationsAuditLogQueryService.java
+│   │   │               │       ├── OperationsBankOnboardingService.java
+│   │   │               │       ├── OperationsBankStatusService.java
+│   │   │               │       ├── OperationsConnectorHealthService.java
+│   │   │               │       ├── OperationsConnectorTestService.java
+│   │   │               │       ├── OperationsDashboardSummaryService.java
+│   │   │               │       ├── OperationsGenerateRoutesForBankService.java
+│   │   │               │       ├── OperationsHealthService.java
+│   │   │               │       ├── OperationsIsoMessageQueryService.java
+│   │   │               │       ├── OperationsOutboxFailureRetryAllService.java
+│   │   │               │       ├── OperationsOutboxFailureService.java
+│   │   │               │       ├── OperationsOutboxMarkReviewedService.java
+│   │   │               │       ├── OperationsOutboxStuckRecoverService.java
+│   │   │               │       ├── OperationsOutboxStuckService.java
+│   │   │               │       └── OperationsTransactionQueryService.java
 │   │   │               ├── outbox
 │   │   │               │   ├── controller
 │   │   │               │   │   ├── OutboxEventController.java
@@ -254,7 +324,6 @@
 │   │   │               │   └── service
 │   │   │               │       ├── RoutingRuleManagementService.java
 │   │   │               │       └── RoutingService.java
-│   │   │               ├── SwitchingApplication.java
 │   │   │               └── transfer
 │   │   │                   ├── controller
 │   │   │                   │   ├── TransferController.java
@@ -312,17 +381,17 @@
 │           └── com
 │               └── example
 │                   └── switching
+│                       ├── SwitchingApplicationTests.java
 │                       ├── connector
 │                       │   └── service
 │                       │       └── ConnectorConfigManagementServiceTest.java
 │                       ├── participant
 │                       │   └── service
 │                       │       └── ParticipantManagementServiceTest.java
-│                       ├── routing
-│                       │   └── service
-│                       │       └── RoutingRuleManagementServiceTest.java
-│                       └── SwitchingApplicationTests.java
-├── String.txt
+│                       └── routing
+│                           └── service
+│                               └── RoutingRuleManagementServiceTest.java
+├── switching_structure.txt
 ├── target
 │   ├── classes
 │   │   ├── application.properties
@@ -330,6 +399,7 @@
 │   │   ├── com
 │   │   │   └── example
 │   │   │       └── switching
+│   │   │           ├── SwitchingApplication.class
 │   │   │           ├── audit
 │   │   │           │   ├── controller
 │   │   │           │   │   └── AuditLogController.class
@@ -368,6 +438,10 @@
 │   │   │           │   └── WebConfig.class
 │   │   │           ├── connector
 │   │   │           │   ├── BankConnector.class
+│   │   │           │   ├── GenericHttpConnector.class
+│   │   │           │   ├── GenericMockConnector.class
+│   │   │           │   ├── GenericMqConnector.class
+│   │   │           │   ├── MockBankConnector.class
 │   │   │           │   ├── controller
 │   │   │           │   │   └── ConnectorConfigController.class
 │   │   │           │   ├── dto
@@ -382,13 +456,9 @@
 │   │   │           │   ├── exception
 │   │   │           │   │   ├── ConnectorConfigAlreadyExistsException.class
 │   │   │           │   │   └── ConnectorConfigNotFoundException.class
-│   │   │           │   ├── GenericHttpConnector.class
-│   │   │           │   ├── GenericMockConnector.class
-│   │   │           │   ├── GenericMqConnector.class
-│   │   │           │   ├── MockBankConnector.class
 │   │   │           │   ├── registry
-│   │   │           │   │   ├── ConnectorRegistry.class
-│   │   │           │   │   └── ConnectorRegistry$1.class
+│   │   │           │   │   ├── ConnectorRegistry$1.class
+│   │   │           │   │   └── ConnectorRegistry.class
 │   │   │           │   ├── repository
 │   │   │           │   │   └── ConnectorConfigRepository.class
 │   │   │           │   └── service
@@ -492,6 +562,81 @@
 │   │   │           │       ├── IsoMessageSecurityService.class
 │   │   │           │       ├── IsoMessageService.class
 │   │   │           │       └── IsoMessageValidationService.class
+│   │   │           ├── operations
+│   │   │           │   ├── controller
+│   │   │           │   │   ├── OperationsAuditLogQueryController.class
+│   │   │           │   │   ├── OperationsBankOnboardingController.class
+│   │   │           │   │   ├── OperationsBankStatusController.class
+│   │   │           │   │   ├── OperationsConnectorController.class
+│   │   │           │   │   ├── OperationsDashboardSummaryController.class
+│   │   │           │   │   ├── OperationsHealthController.class
+│   │   │           │   │   ├── OperationsIsoMessageQueryController.class
+│   │   │           │   │   ├── OperationsOutboxFailureController.class
+│   │   │           │   │   ├── OperationsOutboxFailureRetryAllController.class
+│   │   │           │   │   ├── OperationsOutboxMarkReviewedController.class
+│   │   │           │   │   ├── OperationsOutboxStuckController.class
+│   │   │           │   │   ├── OperationsOutboxStuckRecoverController.class
+│   │   │           │   │   └── OperationsTransactionQueryController.class
+│   │   │           │   ├── dto
+│   │   │           │   │   ├── OperationsAuditLogItemResponse.class
+│   │   │           │   │   ├── OperationsAuditLogListResponse.class
+│   │   │           │   │   ├── OperationsBankOnboardingRequest.class
+│   │   │           │   │   ├── OperationsBankOnboardingResponse.class
+│   │   │           │   │   ├── OperationsBankStatusItemResponse.class
+│   │   │           │   │   ├── OperationsBankStatusListResponse.class
+│   │   │           │   │   ├── OperationsConnectorHealthItemResponse.class
+│   │   │           │   │   ├── OperationsConnectorHealthListResponse.class
+│   │   │           │   │   ├── OperationsConnectorTestResponse.class
+│   │   │           │   │   ├── OperationsDashboardSummaryResponse$BankSummary.class
+│   │   │           │   │   ├── OperationsDashboardSummaryResponse$ConnectorSummary.class
+│   │   │           │   │   ├── OperationsDashboardSummaryResponse$IsoMessageSummary.class
+│   │   │           │   │   ├── OperationsDashboardSummaryResponse$LatestTransactionItem.class
+│   │   │           │   │   ├── OperationsDashboardSummaryResponse$OutboxAlertItem.class
+│   │   │           │   │   ├── OperationsDashboardSummaryResponse$OutboxSummary.class
+│   │   │           │   │   ├── OperationsDashboardSummaryResponse$RoutingSummary.class
+│   │   │           │   │   ├── OperationsDashboardSummaryResponse$TransferSummary.class
+│   │   │           │   │   ├── OperationsDashboardSummaryResponse.class
+│   │   │           │   │   ├── OperationsGenerateRouteItemResponse.class
+│   │   │           │   │   ├── OperationsGenerateRoutesForBankRequest.class
+│   │   │           │   │   ├── OperationsGenerateRoutesForBankResponse.class
+│   │   │           │   │   ├── OperationsHealthResponse.class
+│   │   │           │   │   ├── OperationsIsoMessageItemResponse.class
+│   │   │           │   │   ├── OperationsIsoMessageListResponse.class
+│   │   │           │   │   ├── OperationsOutboxFailureItemResponse.class
+│   │   │           │   │   ├── OperationsOutboxFailureListResponse.class
+│   │   │           │   │   ├── OperationsOutboxFailureRetryAllResponse.class
+│   │   │           │   │   ├── OperationsOutboxFailureRetryItemResponse.class
+│   │   │           │   │   ├── OperationsOutboxMarkReviewedRequest.class
+│   │   │           │   │   ├── OperationsOutboxMarkReviewedResponse.class
+│   │   │           │   │   ├── OperationsOutboxStuckItemResponse.class
+│   │   │           │   │   ├── OperationsOutboxStuckListResponse.class
+│   │   │           │   │   ├── OperationsOutboxStuckRecoverAllResponse.class
+│   │   │           │   │   ├── OperationsOutboxStuckRecoverItemResponse.class
+│   │   │           │   │   ├── OperationsTransactionItemResponse.class
+│   │   │           │   │   └── OperationsTransactionListResponse.class
+│   │   │           │   └── service
+│   │   │           │       ├── OperationsAuditLogQueryService.class
+│   │   │           │       ├── OperationsBankOnboardingService.class
+│   │   │           │       ├── OperationsBankStatusService$ParticipantRow.class
+│   │   │           │       ├── OperationsBankStatusService.class
+│   │   │           │       ├── OperationsConnectorHealthService$ConnectorConfigRow.class
+│   │   │           │       ├── OperationsConnectorHealthService.class
+│   │   │           │       ├── OperationsConnectorTestService$ConnectorConfigRow.class
+│   │   │           │       ├── OperationsConnectorTestService.class
+│   │   │           │       ├── OperationsDashboardSummaryService.class
+│   │   │           │       ├── OperationsGenerateRoutesForBankService$ParticipantRow.class
+│   │   │           │       ├── OperationsGenerateRoutesForBankService.class
+│   │   │           │       ├── OperationsHealthService.class
+│   │   │           │       ├── OperationsIsoMessageQueryService.class
+│   │   │           │       ├── OperationsOutboxFailureRetryAllService$FailedOutboxRow.class
+│   │   │           │       ├── OperationsOutboxFailureRetryAllService.class
+│   │   │           │       ├── OperationsOutboxFailureService.class
+│   │   │           │       ├── OperationsOutboxMarkReviewedService$OutboxRow.class
+│   │   │           │       ├── OperationsOutboxMarkReviewedService.class
+│   │   │           │       ├── OperationsOutboxStuckRecoverService$StuckOutboxRow.class
+│   │   │           │       ├── OperationsOutboxStuckRecoverService.class
+│   │   │           │       ├── OperationsOutboxStuckService.class
+│   │   │           │       └── OperationsTransactionQueryService.class
 │   │   │           ├── outbox
 │   │   │           │   ├── controller
 │   │   │           │   │   ├── OutboxEventController.class
@@ -566,7 +711,6 @@
 │   │   │           │   └── service
 │   │   │           │       ├── RoutingRuleManagementService.class
 │   │   │           │       └── RoutingService.class
-│   │   │           ├── SwitchingApplication.class
 │   │   │           └── transfer
 │   │   │               ├── controller
 │   │   │               │   ├── TransferController.class
@@ -630,20 +774,29 @@
 │   │           └── default-testCompile
 │   │               ├── createdFiles.lst
 │   │               └── inputFiles.lst
+│   ├── surefire-reports
+│   │   ├── TEST-com.example.switching.SwitchingApplicationTests.xml
+│   │   ├── TEST-com.example.switching.connector.service.ConnectorConfigManagementServiceTest.xml
+│   │   ├── TEST-com.example.switching.participant.service.ParticipantManagementServiceTest.xml
+│   │   ├── TEST-com.example.switching.routing.service.RoutingRuleManagementServiceTest.xml
+│   │   ├── com.example.switching.SwitchingApplicationTests.txt
+│   │   ├── com.example.switching.connector.service.ConnectorConfigManagementServiceTest.txt
+│   │   ├── com.example.switching.participant.service.ParticipantManagementServiceTest.txt
+│   │   └── com.example.switching.routing.service.RoutingRuleManagementServiceTest.txt
 │   └── test-classes
 │       └── com
 │           └── example
 │               └── switching
+│                   ├── SwitchingApplicationTests.class
 │                   ├── connector
 │                   │   └── service
 │                   │       └── ConnectorConfigManagementServiceTest.class
 │                   ├── participant
 │                   │   └── service
 │                   │       └── ParticipantManagementServiceTest.class
-│                   ├── routing
-│                   │   └── service
-│                   │       └── RoutingRuleManagementServiceTest.class
-│                   └── SwitchingApplicationTests.class
+│                   └── routing
+│                       └── service
+│                           └── RoutingRuleManagementServiceTest.class
 └── zibwWeOH
 
-226 directories, 421 files
+243 directories, 557 files
