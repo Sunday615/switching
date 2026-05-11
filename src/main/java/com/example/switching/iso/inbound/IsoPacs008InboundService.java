@@ -11,13 +11,16 @@ public class IsoPacs008InboundService {
 
     private final Pacs008InboundParser parser;
     private final Pacs002XmlResponseBuilder responseBuilder;
+    private final InboundPacs008PersistenceService persistenceService;
 
     public IsoPacs008InboundService(
             Pacs008InboundParser parser,
-            Pacs002XmlResponseBuilder responseBuilder
+            Pacs002XmlResponseBuilder responseBuilder,
+            InboundPacs008PersistenceService persistenceService
     ) {
         this.parser = parser;
         this.responseBuilder = responseBuilder;
+        this.persistenceService = persistenceService;
     }
 
     public String handleInboundPacs008(String xmlBody, String bankCodeHeader) {
@@ -49,7 +52,18 @@ public class IsoPacs008InboundService {
             );
         }
 
-        return responseBuilder.accepted(request);
+        try {
+            InboundPacs008PersistResult result =
+                    persistenceService.persistAcceptedInboundPacs008(request, xmlBody);
+
+            return responseBuilder.accepted(request, result.getTransferRef());
+        } catch (Exception e) {
+            return responseBuilder.rejected(
+                    request,
+                    "MS03",
+                    "Unable to persist inbound PACS.008: " + safeErrorMessage(e)
+            );
+        }
     }
 
     private List<String> validate(Pacs008InboundRequest request, String bankCodeHeader) {
@@ -60,7 +74,7 @@ public class IsoPacs008InboundService {
         require(errors, request.getNumberOfTransactions(), "GrpHdr/NbOfTxs is required");
 
         if (!"1".equals(request.getNumberOfTransactions())) {
-            errors.add("Only single-transaction PACS.008 is supported in ISO-IN-1A");
+            errors.add("Only single-transaction PACS.008 is supported in ISO-IN-1B.1");
         }
 
         require(errors, request.getInstructionId(), "PmtId/InstrId is required");
@@ -96,5 +110,12 @@ public class IsoPacs008InboundService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String safeErrorMessage(Exception e) {
+        if (e.getMessage() == null || e.getMessage().isBlank()) {
+            return e.getClass().getSimpleName();
+        }
+        return e.getMessage();
     }
 }

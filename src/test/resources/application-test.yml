@@ -22,6 +22,9 @@ spring:
     password: ${TEST_DB_PASSWORD:REMOVED}
 
 switching:
+  payment:
+    json-initiation:
+      enabled: true
   mock-bank:
     pacs002:
       force-reject: false

@@ -13,15 +13,19 @@ public class Pacs002XmlResponseBuilder {
             "urn:iso:std:iso:20022:tech:xsd:pacs.002.001.12";
 
     public String accepted(Pacs008InboundRequest request) {
-        return build(request, "ACTC", "ACTC", null, null);
+        return build(request, "ACTC", "ACTC", null, null, null);
+    }
+
+    public String accepted(Pacs008InboundRequest request, String transferRef) {
+        return build(request, "ACTC", "ACTC", null, null, transferRef);
     }
 
     public String rejected(Pacs008InboundRequest request, String reasonCode, String reasonDescription) {
-        return build(request, "RJCT", "RJCT", reasonCode, reasonDescription);
+        return build(request, "RJCT", "RJCT", reasonCode, reasonDescription, null);
     }
 
     public String rejectedWithoutOriginalMessage(String reasonCode, String reasonDescription) {
-        return build(null, "RJCT", "RJCT", reasonCode, reasonDescription);
+        return build(null, "RJCT", "RJCT", reasonCode, reasonDescription, null);
     }
 
     private String build(
@@ -29,7 +33,8 @@ public class Pacs002XmlResponseBuilder {
             String groupStatus,
             String transactionStatus,
             String reasonCode,
-            String reasonDescription
+            String reasonDescription,
+            String transferRef
     ) {
         String now = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
 
@@ -58,6 +63,10 @@ public class Pacs002XmlResponseBuilder {
         xml.append("<OrgnlInstrId>").append(escape(originalInstructionId)).append("</OrgnlInstrId>");
         xml.append("<OrgnlEndToEndId>").append(escape(originalEndToEndId)).append("</OrgnlEndToEndId>");
         xml.append("<TxSts>").append(escape(transactionStatus)).append("</TxSts>");
+
+        if (transferRef != null && !transferRef.isBlank()) {
+            xml.append("<AcctSvcrRef>").append(escape(transferRef)).append("</AcctSvcrRef>");
+        }
 
         if ("RJCT".equals(transactionStatus)) {
             xml.append("<StsRsnInf>");
