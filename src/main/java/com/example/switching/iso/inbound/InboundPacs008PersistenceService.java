@@ -3,7 +3,11 @@ package com.example.switching.iso.inbound;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
 
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,22 +28,26 @@ import com.example.switching.transfer.repository.TransferStatusHistoryRepository
 public class InboundPacs008PersistenceService {
 
     private static final String ISO_INBOUND_CHANNEL_ID = "ISO20022_XML";
+    private static final String MESSAGE_TYPE_PACS_008 = "PACS_008";
 
     private final TransferRefGenerator transferRefGenerator;
     private final TransferRepository transferRepository;
     private final TransferStatusHistoryRepository transferStatusHistoryRepository;
     private final IsoMessageRepository isoMessageRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public InboundPacs008PersistenceService(
             TransferRefGenerator transferRefGenerator,
             TransferRepository transferRepository,
             TransferStatusHistoryRepository transferStatusHistoryRepository,
-            IsoMessageRepository isoMessageRepository
+            IsoMessageRepository isoMessageRepository,
+            JdbcTemplate jdbcTemplate
     ) {
         this.transferRefGenerator = transferRefGenerator;
         this.transferRepository = transferRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
         this.isoMessageRepository = isoMessageRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Transactional
@@ -49,6 +57,12 @@ public class InboundPacs008PersistenceService {
     ) {
         String transferRef = transferRefGenerator.generate();
         LocalDateTime now = LocalDateTime.now();
+
+        RouteResolution route = resolveRoute(
+                request.getDebtorAgentBic(),
+                request.getCreditorAgentBic(),
+                MESSAGE_TYPE_PACS_008
+        );
 
         String clientTransferId = firstNonBlank(
                 request.getInstructionId(),
@@ -68,17 +82,13 @@ public class InboundPacs008PersistenceService {
 
         setValue(transfer, "transferRef", transferRef);
 
-        // Required by transfers.channel_id.
         setValueIfPresent(transfer, ISO_INBOUND_CHANNEL_ID, "channelId", "channelID");
-
-        // Required / useful for ISO-only inbound tracking.
         setValueIfPresent(transfer, clientTransferId, "clientTransferId", "clientTransactionId");
         setValueIfPresent(transfer, idempotencyKey, "idempotencyKey");
 
         // ISO-only inbound transfer has no inquiryRef.
         setValueIfPresent(transfer, null, "inquiryRef");
 
-        // Existing project fields appear to use *_bank_code and *_account_no.
         setValueIfPresent(transfer, request.getDebtorAgentBic(), "sourceBankCode", "sourceBank");
         setValueIfPresent(transfer, request.getCreditorAgentBic(), "destinationBankCode", "destinationBank");
 
@@ -90,10 +100,9 @@ public class InboundPacs008PersistenceService {
         setValueIfPresent(transfer, request.getCurrency(), "currency");
         setValueIfPresent(transfer, request.getRemittanceInformation(), "reference");
 
-        // These are intentionally null in ISO-IN-1B.1.
-        // ISO-IN-1B.2 will populate them after routing resolution.
-        setValueIfPresent(transfer, null, "routeCode");
-        setValueIfPresent(transfer, null, "connectorName");
+        setValueIfPresent(transfer, route.routeCode(), "routeCode");
+        setValueIfPresent(transfer, route.connectorName(), "connectorName");
+
         setValueIfPresent(transfer, null, "externalReference");
         setValueIfPresent(transfer, null, "errorCode");
         setValueIfPresent(transfer, null, "errorMessage");
@@ -105,6 +114,22 @@ public class InboundPacs008PersistenceService {
 
         transferRepository.save(transfer);
 
+        saveTransferHistory(transferRef, now);
+
+        saveInboundIsoMessage(transferRef, request, rawXml, now);
+
+        /*
+         * ISO-IN-1B.2A:
+         * Save an OUTBOUND PACS.008 and enqueue TRANSFER_DISPATCH so the existing
+         * outbox worker can continue the same dispatch path as the old JSON flow.
+         */
+        Long outboundIsoMessageId = saveOutboundIsoMessage(transferRef, request, rawXml, now);
+        enqueueTransferDispatchOutbox(transferRef, request, route, outboundIsoMessageId, now);
+
+        return new InboundPacs008PersistResult(transferRef);
+    }
+
+    private void saveTransferHistory(String transferRef, LocalDateTime now) {
         TransferStatusHistoryEntity history = new TransferStatusHistoryEntity();
 
         setValueIfPresent(history, transferRef, "transferRef");
@@ -112,7 +137,7 @@ public class InboundPacs008PersistenceService {
         setValueIfPresent(history, null, "reasonCode");
         setValueIfPresent(
                 history,
-                "Inbound PACS.008 accepted from member bank",
+                "Inbound PACS.008 accepted and queued for dispatch",
                 "message",
                 "description",
                 "reason",
@@ -122,7 +147,14 @@ public class InboundPacs008PersistenceService {
         setValueIfPresent(history, now, "createdAt", "createdDate", "createdOn");
 
         transferStatusHistoryRepository.save(history);
+    }
 
+    private void saveInboundIsoMessage(
+            String transferRef,
+            Pacs008InboundRequest request,
+            String rawXml,
+            LocalDateTime now
+    ) {
         IsoMessageEntity isoMessage = new IsoMessageEntity();
 
         setValueIfPresent(isoMessage, transferRef, "correlationRef");
@@ -137,9 +169,235 @@ public class InboundPacs008PersistenceService {
         setEnumOrStringValue(isoMessage, "validationStatus", IsoValidationStatus.VALID);
         setEnumOrStringValue(isoMessage, "securityStatus", IsoSecurityStatus.PLAIN);
 
+        setXmlPayload(isoMessage, rawXml);
+
+        /*
+         * Compatibility for the existing outbox worker:
+         * OutboxIsoMessageDispatchService requires encryptedPayload when
+         * securityStatus = ENCRYPTED.
+         *
+         * For ISO-IN-1B.2A we reuse rawXml as encryptedPayload so the existing
+         * mock connector dispatch path can be proven end-to-end.
+         *
+         * Later hardening should replace this with the real encryption service.
+         */
+        setEncryptedPayload(isoMessage, rawXml);
+
+        setValueIfPresent(isoMessage, null, "errorCode");
+        setValueIfPresent(isoMessage, null, "errorMessage");
+        setValueIfPresent(isoMessage, now, "createdAt", "createdDate", "createdOn");
+        setValueIfPresent(isoMessage, now, "updatedAt", "updatedDate", "updatedOn");
+
+        isoMessageRepository.save(isoMessage);
+    }
+
+    private Long saveOutboundIsoMessage(
+            String transferRef,
+            Pacs008InboundRequest request,
+            String rawXml,
+            LocalDateTime now
+    ) {
+        IsoMessageEntity isoMessage = new IsoMessageEntity();
+
+        setValueIfPresent(isoMessage, transferRef, "correlationRef");
+        setValueIfPresent(isoMessage, transferRef, "transferRef");
+        setValueIfPresent(isoMessage, null, "inquiryRef");
+
+        setValueIfPresent(isoMessage, "MSG-" + transferRef, "messageId");
+        setValueIfPresent(isoMessage, request.getEndToEndId(), "endToEndId");
+
+        setEnumOrStringValue(isoMessage, "messageType", IsoMessageType.PACS_008);
+        setEnumOrStringValue(isoMessage, "direction", IsoMessageDirection.OUTBOUND);
+
+        /*
+         * In this phase we reuse the inbound PACS.008 XML as outbound XML.
+         * Later hardening can rebuild outbound XML using Pacs008XmlBuilder
+         * and apply encryption policy if required.
+         */
+        setEnumOrStringValue(isoMessage, "validationStatus", IsoValidationStatus.NOT_VALIDATED);
+        setEnumOrStringValue(isoMessage, "securityStatus", IsoSecurityStatus.ENCRYPTED);
+
+        setXmlPayload(isoMessage, rawXml);
+        
+
+        setValueIfPresent(isoMessage, null, "errorCode");
+        setValueIfPresent(isoMessage, null, "errorMessage");
+        setValueIfPresent(isoMessage, now, "createdAt", "createdDate", "createdOn");
+        setValueIfPresent(isoMessage, now, "updatedAt", "updatedDate", "updatedOn");
+
+        IsoMessageEntity saved = isoMessageRepository.save(isoMessage);
+        Long isoMessageId = getLongValue(saved, "id", "isoMessageId");
+
+        if (isoMessageId == null) {
+            throw new IllegalStateException("Unable to resolve saved outbound ISO message id for transferRef=" + transferRef);
+        }
+
+        return isoMessageId;
+    }
+
+    private void enqueueTransferDispatchOutbox(
+            String transferRef,
+            Pacs008InboundRequest request,
+            RouteResolution route,
+            Long outboundIsoMessageId,
+            LocalDateTime now
+    ) {
+        /*
+         * IMPORTANT:
+         * This JSON must match DispatchTransferCommand exactly.
+         * Do not add fields such as messageType, isoMessageType, inquiryRef, or reference.
+         * The worker currently fails on unknown JSON properties.
+         */
+        String payloadJson = """
+                {
+                  "transferRef": "%s",
+                  "sourceBank": "%s",
+                  "destinationBank": "%s",
+                  "debtorAccount": "%s",
+                  "creditorAccount": "%s",
+                  "amount": %s,
+                  "currency": "%s",
+                  "routeCode": "%s",
+                  "connectorName": "%s",
+                  "isoMessageId": %d
+                }
+                """.formatted(
+                escapeJson(transferRef),
+                escapeJson(request.getDebtorAgentBic()),
+                escapeJson(request.getCreditorAgentBic()),
+                escapeJson(request.getDebtorAccount()),
+                escapeJson(request.getCreditorAccount()),
+                request.getAmount(),
+                escapeJson(request.getCurrency()),
+                escapeJson(route.routeCode()),
+                escapeJson(route.connectorName()),
+                outboundIsoMessageId
+        );
+
+        Map<String, Object> values = new LinkedHashMap<>();
+
+        /*
+         * Required by your current outbox_events schema.
+         * Error showed: Field 'transfer_ref' doesn't have a default value.
+         */
+        putIfColumnExists(values, "transfer_ref", transferRef);
+
+        /*
+         * Optional/common outbox columns. They are inserted only if the column exists.
+         */
+        putIfColumnExists(values, "aggregate_type", "TRANSFER");
+        putIfColumnExists(values, "aggregate_id", transferRef);
+        putIfColumnExists(values, "event_type", "TRANSFER_DISPATCH");
+
+        putIfColumnExists(values, "message_type", "TRANSFER_DISPATCH");
+        putIfColumnExists(values, "payload", payloadJson);
+        putIfColumnExists(values, "payload_json", payloadJson);
+
+        putIfColumnExists(values, "route_code", route.routeCode());
+        putIfColumnExists(values, "connector_name", route.connectorName());
+
+        putIfColumnExists(values, "status", "PENDING");
+        putIfColumnExists(values, "retry_count", 0);
+
+        putIfColumnExists(values, "last_error", null);
+        putIfColumnExists(values, "processed_at", null);
+        putIfColumnExists(values, "next_retry_at", now);
+
+        putIfColumnExists(values, "created_at", now);
+        putIfColumnExists(values, "updated_at", now);
+
+        if (values.isEmpty()) {
+            throw new IllegalStateException("Cannot enqueue outbox event because no known outbox_events columns were found");
+        }
+
+        String columns = String.join(",", values.keySet());
+        String placeholders = String.join(",", values.keySet().stream().map(key -> "?").toList());
+
+        jdbcTemplate.update(
+                "INSERT INTO outbox_events (" + columns + ") VALUES (" + placeholders + ")",
+                values.values().toArray()
+        );
+    }
+
+    private RouteResolution resolveRoute(String sourceBank, String destinationBank, String messageType) {
+        validateParticipantActive(sourceBank, "source");
+        validateParticipantActive(destinationBank, "destination");
+
+        Optional<RouteResolution> route = jdbcTemplate.query(
+                """
+                SELECT route_code, connector_name
+                FROM routing_rules
+                WHERE source_bank = ?
+                  AND destination_bank = ?
+                  AND message_type = ?
+                  AND enabled = true
+                ORDER BY priority ASC, id ASC
+                LIMIT 1
+                """,
+                rs -> {
+                    if (!rs.next()) {
+                        return Optional.empty();
+                    }
+
+                    return Optional.of(new RouteResolution(
+                            rs.getString("route_code"),
+                            rs.getString("connector_name")
+                    ));
+                },
+                sourceBank,
+                destinationBank,
+                messageType
+        );
+
+        return route.orElseThrow(() -> new IllegalStateException(
+                "No enabled route found for " + sourceBank + " -> " + destinationBank + " / " + messageType
+        ));
+    }
+
+    private void validateParticipantActive(String bankCode, String role) {
+        Integer activeCount = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM participants
+                WHERE bank_code = ?
+                  AND status = 'ACTIVE'
+                """,
+                Integer.class,
+                bankCode
+        );
+
+        if (activeCount == null || activeCount == 0) {
+            throw new IllegalStateException("Inactive or missing " + role + " participant: " + bankCode);
+        }
+    }
+
+    private void putIfColumnExists(Map<String, Object> values, String columnName, Object value) {
+        if (hasTableColumn("outbox_events", columnName)) {
+            values.put(columnName, value);
+        }
+    }
+
+    private boolean hasTableColumn(String tableName, String columnName) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = ?
+                  AND column_name = ?
+                """,
+                Integer.class,
+                tableName,
+                columnName
+        );
+
+        return count != null && count > 0;
+    }
+
+    private void setXmlPayload(IsoMessageEntity isoMessage, String xml) {
         setValueIfPresent(
                 isoMessage,
-                rawXml,
+                xml,
                 "messageXml",
                 "rawXml",
                 "xmlPayload",
@@ -150,15 +408,21 @@ public class InboundPacs008PersistenceService {
                 "content",
                 "isoXml"
         );
+    }
 
-        setValueIfPresent(isoMessage, null, "errorCode");
-        setValueIfPresent(isoMessage, null, "errorMessage");
-        setValueIfPresent(isoMessage, now, "createdAt", "createdDate", "createdOn");
-        setValueIfPresent(isoMessage, now, "updatedAt", "updatedDate", "updatedOn");
-
-        isoMessageRepository.save(isoMessage);
-
-        return new InboundPacs008PersistResult(transferRef);
+    private void setEncryptedPayload(IsoMessageEntity isoMessage, String encryptedPayload) {
+        setValueIfPresent(
+                isoMessage,
+                encryptedPayload,
+                "encryptedPayload",
+                "encryptedXml",
+                "encryptedMessage",
+                "encryptedMessageXml",
+                "cipherText",
+                "ciphertext",
+                "encryptedContent",
+                "encryptedIsoXml"
+        );
     }
 
     private String firstNonBlank(String... values) {
@@ -175,6 +439,55 @@ public class InboundPacs008PersistenceService {
             return "NA";
         }
         return value.trim();
+    }
+
+    private String escapeJson(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"");
+    }
+
+    private Long getLongValue(Object target, String... possiblePropertyNames) {
+        for (String propertyName : possiblePropertyNames) {
+            Method getter = findGetter(target.getClass(), propertyName);
+
+            if (getter != null) {
+                try {
+                    Object value = getter.invoke(target);
+                    if (value instanceof Number number) {
+                        return number.longValue();
+                    }
+                } catch (Exception e) {
+                    throw new IllegalStateException(
+                            "Failed to call getter for " + target.getClass().getSimpleName() + "." + propertyName,
+                            e
+                    );
+                }
+            }
+
+            Field field = findField(target.getClass(), propertyName);
+
+            if (field != null) {
+                try {
+                    field.setAccessible(true);
+                    Object value = field.get(target);
+                    if (value instanceof Number number) {
+                        return number.longValue();
+                    }
+                } catch (Exception e) {
+                    throw new IllegalStateException(
+                            "Failed to read field " + target.getClass().getSimpleName() + "." + propertyName,
+                            e
+                    );
+                }
+            }
+        }
+
+        return null;
     }
 
     private void setEnumOrStringValue(Object target, String propertyName, Enum<?> enumValue) {
@@ -295,6 +608,19 @@ public class InboundPacs008PersistenceService {
         return null;
     }
 
+    private Method findGetter(Class<?> targetClass, String propertyName) {
+        String suffix = Character.toUpperCase(propertyName.charAt(0)) + propertyName.substring(1);
+        String getterName = "get" + suffix;
+
+        for (Method method : targetClass.getMethods()) {
+            if (method.getName().equals(getterName) && method.getParameterCount() == 0) {
+                return method;
+            }
+        }
+
+        return null;
+    }
+
     private Field findField(Class<?> targetClass, String propertyName) {
         Class<?> current = targetClass;
 
@@ -307,5 +633,11 @@ public class InboundPacs008PersistenceService {
         }
 
         return null;
+    }
+
+    private record RouteResolution(
+            String routeCode,
+            String connectorName
+    ) {
     }
 }
