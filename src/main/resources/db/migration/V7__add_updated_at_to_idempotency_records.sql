@@ -1,10 +1,19 @@
-alter table idempotency_records
-add column updated_at datetime null;
+ALTER TABLE idempotency_records
+    ADD COLUMN channel_id VARCHAR(64) NOT NULL DEFAULT 'DEFAULT';
 
-update idempotency_records
-set updated_at = created_at
-where updated_at is null
-  and created_at is not null;
+ALTER TABLE idempotency_records
+    DROP INDEX uq_idempotency_key;
 
-alter table idempotency_records
-modify column updated_at datetime not null default current_timestamp on update current_timestamp;
+ALTER TABLE idempotency_records
+    ADD CONSTRAINT uq_idempotency_channel_key UNIQUE (channel_id, idempotency_key);
+
+ALTER TABLE idempotency_records
+    ADD COLUMN updated_at DATETIME NULL;
+
+UPDATE idempotency_records
+SET updated_at = created_at
+WHERE updated_at IS NULL
+  AND created_at IS NOT NULL;
+
+ALTER TABLE idempotency_records
+    MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;

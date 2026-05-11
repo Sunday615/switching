@@ -4,7 +4,7 @@ services:
     container_name: switching-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: REMOVED
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: switching_db
     ports:
       - "3306:3306"
@@ -30,7 +30,8 @@ services:
     environment:
       DB_URL: jdbc:mysql://mysql:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true
       DB_USERNAME: root
-      DB_PASSWORD: REMOVED
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MESSAGE_CRYPTO_KEY_BASE64: ${MESSAGE_CRYPTO_KEY_BASE64}
       SERVER_PORT: 8080
       OUTBOX_DISPATCH_DELAY_MS: 5000
     ports:

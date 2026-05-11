@@ -1,0 +1,30 @@
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:mysql://localhost:3306/switching_clean?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true}
+    username: ${TEST_DB_USERNAME:root}
+    password: ${TEST_DB_PASSWORD:REMOVED}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    url: ${TEST_DB_URL:jdbc:mysql://localhost:3306/switching_clean?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true}
+    user: ${TEST_DB_USERNAME:root}
+    password: ${TEST_DB_PASSWORD:REMOVED}
+
+switching:
+  mock-bank:
+    pacs002:
+      force-reject: false
+
+  security:
+    message-crypto-key-base64: ${TEST_MESSAGE_CRYPTO_KEY_BASE64:NImwCmFwkSIeDgy8UJtzGq86A389puEEe6gi2Wdo9MM=}
