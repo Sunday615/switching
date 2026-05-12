@@ -82,6 +82,7 @@ public class IsoInquiryInboundService {
 
         String inquiryRef = generateInquiryRef();
         LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expiresAt = now.plusMinutes(INQUIRY_TTL_MINUTES);
 
         jdbcTemplate.update(
                 """
@@ -118,24 +119,23 @@ public class IsoInquiryInboundService {
                 request.getEndToEndId(),
                 request.getSourceBank(),
                 request.getDestinationBank(),
-                request.getDebtorAccount(),
-                request.getCreditorAccount(),
+                null,
+                clean(request.getCreditorAccount()),
                 request.getAmount(),
-                request.getCurrency(),
-                request.getReference(),
+                clean(request.getCurrency()),
+                clean(request.getReference()),
                 "ELIGIBLE",
                 true,
                 true,
                 true,
                 null,
                 null,
-                now.plusMinutes(INQUIRY_TTL_MINUTES),
+                expiresAt,
                 null,
                 now,
                 now
         );
 
-        LocalDateTime expiresAt = now.plusMinutes(INQUIRY_TTL_MINUTES);
         auditInquiryCreated(request, inquiryRef, "ELIGIBLE", true, expiresAt, null, null);
 
         String responseXml = responseBuilder.accepted(request, inquiryRef);
@@ -146,6 +146,7 @@ public class IsoInquiryInboundService {
     private String rejectAndSave(Acmt023InquiryRequest request, String code, String message) {
         String inquiryRef = generateInquiryRef();
         LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expiresAt = now.plusMinutes(INQUIRY_TTL_MINUTES);
 
         jdbcTemplate.update(
                 """
@@ -182,24 +183,23 @@ public class IsoInquiryInboundService {
                 request.getEndToEndId(),
                 request.getSourceBank(),
                 request.getDestinationBank(),
-                request.getDebtorAccount(),
-                request.getCreditorAccount(),
+                null,
+                clean(request.getCreditorAccount()),
                 request.getAmount(),
-                request.getCurrency(),
-                request.getReference(),
+                clean(request.getCurrency()),
+                clean(request.getReference()),
                 "REJECTED",
                 false,
                 false,
                 false,
                 code,
                 message,
-                now.plusMinutes(INQUIRY_TTL_MINUTES),
+                expiresAt,
                 null,
                 now,
                 now
         );
 
-        LocalDateTime expiresAt = now.plusMinutes(INQUIRY_TTL_MINUTES);
         auditInquiryCreated(request, inquiryRef, "REJECTED", false, expiresAt, code, message);
 
         String responseXml = responseBuilder.rejected(request, code, message);
@@ -255,11 +255,11 @@ public class IsoInquiryInboundService {
         payload.put("endToEndId", request.getEndToEndId());
         payload.put("sourceBank", request.getSourceBank());
         payload.put("destinationBank", request.getDestinationBank());
-        payload.put("debtorAccount", request.getDebtorAccount());
-        payload.put("creditorAccount", request.getCreditorAccount());
+        payload.put("debtorAccount", null);
+        payload.put("creditorAccount", clean(request.getCreditorAccount()));
         payload.put("amount", request.getAmount());
-        payload.put("currency", request.getCurrency());
-        payload.put("reference", request.getReference());
+        payload.put("currency", clean(request.getCurrency()));
+        payload.put("reference", clean(request.getReference()));
 
         auditLogService.log(
                 "ISO_ACMT023_INBOUND_RECEIVED",
@@ -286,10 +286,10 @@ public class IsoInquiryInboundService {
         payload.put("endToEndId", request.getEndToEndId());
         payload.put("sourceBank", request.getSourceBank());
         payload.put("destinationBank", request.getDestinationBank());
-        payload.put("debtorAccount", request.getDebtorAccount());
-        payload.put("creditorAccount", request.getCreditorAccount());
+        payload.put("debtorAccount", null);
+        payload.put("creditorAccount", clean(request.getCreditorAccount()));
         payload.put("amount", request.getAmount());
-        payload.put("currency", request.getCurrency());
+        payload.put("currency", clean(request.getCurrency()));
         payload.put("status", status);
         payload.put("eligibleForTransfer", eligibleForTransfer);
         payload.put("expiresAt", expiresAt);
@@ -341,5 +341,13 @@ public class IsoInquiryInboundService {
                 .toUpperCase();
 
         return "INQ-" + timestamp + "-" + randomSuffix;
+    }
+
+    private String clean(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        return value.trim();
     }
 }

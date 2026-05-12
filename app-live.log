@@ -35,26 +35,26 @@
 
  :: Spring Boot ::                (v4.0.3)
 
-2026-05-12T14:34:42.960+07:00  INFO 64871 --- [switching] [           main] c.e.switching.SwitchingApplication       : Starting SwitchingApplication using Java 21.0.10 with PID 64871 (/Users/macbookpro/Desktop/Switching/target/classes started by macbookpro in /Users/macbookpro/Desktop/Switching)
-2026-05-12T14:34:42.961+07:00  INFO 64871 --- [switching] [           main] c.e.switching.SwitchingApplication       : No active profile set, falling back to 1 default profile: "default"
-2026-05-12T14:34:43.289+07:00  INFO 64871 --- [switching] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
-2026-05-12T14:34:43.340+07:00  INFO 64871 --- [switching] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 44 ms. Found 12 JPA repository interfaces.
-2026-05-12T14:34:43.753+07:00  INFO 64871 --- [switching] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 8080 (http)
-2026-05-12T14:34:43.762+07:00  INFO 64871 --- [switching] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
-2026-05-12T14:34:43.762+07:00  INFO 64871 --- [switching] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.18]
-2026-05-12T14:34:43.792+07:00  INFO 64871 --- [switching] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 807 ms
-2026-05-12T14:34:44.420+07:00  INFO 64871 --- [switching] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:mysql://localhost:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true (MySQL 9.5)
-2026-05-12T14:34:44.433+07:00  WARN 64871 --- [switching] [           main] o.f.c.internal.database.base.Database    : Using MySQL 9.5 which is newer than the version Flyway has been verified with. The latest verified version of MySQL is 8.1.
-2026-05-12T14:34:44.460+07:00  INFO 64871 --- [switching] [           main] o.f.core.internal.command.DbValidate     : Successfully validated 12 migrations (execution time 00:00.021s)
-2026-05-12T14:34:44.473+07:00  INFO 64871 --- [switching] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema `switching_db`: 13
-2026-05-12T14:34:44.475+07:00  INFO 64871 --- [switching] [           main] o.f.core.internal.command.DbMigrate      : Schema `switching_db` is up to date. No migration necessary.
-2026-05-12T14:34:44.529+07:00  INFO 64871 --- [switching] [           main] org.hibernate.orm.jpa                    : HHH008540: Processing PersistenceUnitInfo [name: default]
-2026-05-12T14:34:44.555+07:00  INFO 64871 --- [switching] [           main] org.hibernate.orm.core                   : HHH000001: Hibernate ORM core version 7.2.4.Final
-2026-05-12T14:34:44.753+07:00  INFO 64871 --- [switching] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
-2026-05-12T14:34:44.768+07:00  INFO 64871 --- [switching] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
-2026-05-12T14:34:44.776+07:00  INFO 64871 --- [switching] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection com.mysql.cj.jdbc.ConnectionImpl@712e4b18
-2026-05-12T14:34:44.777+07:00  INFO 64871 --- [switching] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
-2026-05-12T14:34:44.814+07:00  INFO 64871 --- [switching] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+2026-05-12T15:54:40.839+07:00  INFO 82635 --- [switching] [           main] c.e.switching.SwitchingApplication       : Starting SwitchingApplication using Java 21.0.10 with PID 82635 (/Users/macbookpro/Desktop/Switching/target/classes started by macbookpro in /Users/macbookpro/Desktop/Switching)
+2026-05-12T15:54:40.841+07:00  INFO 82635 --- [switching] [           main] c.e.switching.SwitchingApplication       : No active profile set, falling back to 1 default profile: "default"
+2026-05-12T15:54:41.190+07:00  INFO 82635 --- [switching] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-05-12T15:54:41.237+07:00  INFO 82635 --- [switching] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 41 ms. Found 12 JPA repository interfaces.
+2026-05-12T15:54:41.604+07:00  INFO 82635 --- [switching] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 8080 (http)
+2026-05-12T15:54:41.611+07:00  INFO 82635 --- [switching] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-05-12T15:54:41.612+07:00  INFO 82635 --- [switching] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.18]
+2026-05-12T15:54:41.639+07:00  INFO 82635 --- [switching] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 770 ms
+2026-05-12T15:54:41.993+07:00  INFO 82635 --- [switching] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:mysql://localhost:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true (MySQL 9.5)
+2026-05-12T15:54:42.012+07:00  WARN 82635 --- [switching] [           main] o.f.c.internal.database.base.Database    : Using MySQL 9.5 which is newer than the version Flyway has been verified with. The latest verified version of MySQL is 8.1.
+2026-05-12T15:54:42.043+07:00  INFO 82635 --- [switching] [           main] o.f.core.internal.command.DbValidate     : Successfully validated 12 migrations (execution time 00:00.022s)
+2026-05-12T15:54:42.058+07:00  INFO 82635 --- [switching] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema `switching_db`: 13
+2026-05-12T15:54:42.059+07:00  INFO 82635 --- [switching] [           main] o.f.core.internal.command.DbMigrate      : Schema `switching_db` is up to date. No migration necessary.
+2026-05-12T15:54:42.116+07:00  INFO 82635 --- [switching] [           main] org.hibernate.orm.jpa                    : HHH008540: Processing PersistenceUnitInfo [name: default]
+2026-05-12T15:54:42.144+07:00  INFO 82635 --- [switching] [           main] org.hibernate.orm.core                   : HHH000001: Hibernate ORM core version 7.2.4.Final
+2026-05-12T15:54:42.366+07:00  INFO 82635 --- [switching] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-05-12T15:54:42.391+07:00  INFO 82635 --- [switching] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-05-12T15:54:42.409+07:00  INFO 82635 --- [switching] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection com.mysql.cj.jdbc.ConnectionImpl@53016c98
+2026-05-12T15:54:42.410+07:00  INFO 82635 --- [switching] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-05-12T15:54:42.461+07:00  INFO 82635 --- [switching] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
 	Database JDBC URL [jdbc:mysql://localhost:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true]
 	Database driver: MySQL Connector/J
 	Database dialect: MySQLDialect
@@ -66,16 +66,16 @@
 	Pool: DataSourceConnectionProvider
 	Minimum pool size: undefined/unknown
 	Maximum pool size: undefined/unknown
-2026-05-12T14:34:45.372+07:00  INFO 64871 --- [switching] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
-2026-05-12T14:34:45.412+07:00  INFO 64871 --- [switching] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
-2026-05-12T14:34:45.457+07:00  INFO 64871 --- [switching] [           main] o.s.d.j.r.query.QueryEnhancerFactories   : Hibernate is in classpath; If applicable, HQL parser will be used.
-2026-05-12T14:34:46.248+07:00  INFO 64871 --- [switching] [           main] o.s.b.w.a.WelcomePageHandlerMapping      : Adding welcome page: class path resource [static/index.html]
-2026-05-12T14:34:46.454+07:00  INFO 64871 --- [switching] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 2 endpoints beneath base path '/actuator'
-2026-05-12T14:34:46.493+07:00  INFO 64871 --- [switching] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 8080 (http) with context path '/'
-2026-05-12T14:34:46.499+07:00  INFO 64871 --- [switching] [           main] c.e.switching.SwitchingApplication       : Started SwitchingApplication in 3.731 seconds (process running for 3.904)
-2026-05-12T14:34:59.684+07:00  INFO 64871 --- [switching] [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
-2026-05-12T14:34:59.685+07:00  INFO 64871 --- [switching] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
-2026-05-12T14:34:59.692+07:00  INFO 64871 --- [switching] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 7 ms
-2026-05-12T14:35:31.758+07:00  INFO 64871 --- [switching] [   scheduling-1] c.e.s.o.worker.OutboxDispatchWorker      : Outbox worker found 1 pending event(s)
-2026-05-12T14:35:31.777+07:00  INFO 64871 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Claimed outboxEventId=26 transferRef=TRX-20260512143527-99DA1C11 as PROCESSING
-2026-05-12T14:35:31.831+07:00  INFO 64871 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Outbox dispatch success: outboxEventId=26 transferRef=TRX-20260512143527-99DA1C11
+2026-05-12T15:54:43.030+07:00  INFO 82635 --- [switching] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-05-12T15:54:43.087+07:00  INFO 82635 --- [switching] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-05-12T15:54:43.133+07:00  INFO 82635 --- [switching] [           main] o.s.d.j.r.query.QueryEnhancerFactories   : Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-05-12T15:54:43.918+07:00  INFO 82635 --- [switching] [           main] o.s.b.w.a.WelcomePageHandlerMapping      : Adding welcome page: class path resource [static/index.html]
+2026-05-12T15:54:44.122+07:00  INFO 82635 --- [switching] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 2 endpoints beneath base path '/actuator'
+2026-05-12T15:54:44.164+07:00  INFO 82635 --- [switching] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 8080 (http) with context path '/'
+2026-05-12T15:54:44.169+07:00  INFO 82635 --- [switching] [           main] c.e.switching.SwitchingApplication       : Started SwitchingApplication in 3.552 seconds (process running for 3.738)
+2026-05-12T16:00:00.645+07:00  INFO 82635 --- [switching] [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-05-12T16:00:00.645+07:00  INFO 82635 --- [switching] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-05-12T16:00:00.653+07:00  INFO 82635 --- [switching] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 8 ms
+2026-05-12T16:06:16.611+07:00  INFO 82635 --- [switching] [   scheduling-1] c.e.s.o.worker.OutboxDispatchWorker      : Outbox worker found 1 pending event(s)
+2026-05-12T16:06:16.675+07:00  INFO 82635 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Claimed outboxEventId=27 transferRef=TRX-20260512160612-31319D17 as PROCESSING
+2026-05-12T16:06:16.784+07:00  INFO 82635 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Outbox dispatch success: outboxEventId=27 transferRef=TRX-20260512160612-31319D17

@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.xpath.XPathFactory;
 
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -38,8 +39,39 @@ public class Acmt023XmlParser {
             request.setSourceBank(required(nthText(document, "BICFI", 0), "source BICFI"));
             request.setDestinationBank(required(nthText(document, "BICFI", 1), "destination BICFI"));
 
-            request.setDebtorAccount(nthText(document, "Id", 1));
-            request.setCreditorAccount(required(lastText(document, "Id"), "creditor account"));
+            /*
+             * Current local ACMT.023 profile verifies the destination / creditor account.
+             *
+             * Parse the leaf account Id directly. Do not read parent nodes such as:
+             * - <PtyAndAcctId>
+             * - <Acct>
+             * - parent <Id>
+             *
+             * Reading parent nodes can return raw XML whitespace around the account number.
+             */
+            String verifiedAccount = firstNonBlank(
+                    xpathText(
+                            document,
+                            "//*[local-name()='Vrfctn']" +
+                                    "/*[local-name()='PtyAndAcctId']" +
+                                    "/*[local-name()='Acct']" +
+                                    "/*[local-name()='Id']" +
+                                    "/*[local-name()='Othr']" +
+                                    "/*[local-name()='Id']/text()"
+                    ),
+                    xpathText(
+                            document,
+                            "//*[local-name()='Vrfctn']" +
+                                    "/*[local-name()='PtyAndAcctId']" +
+                                    "/*[local-name()='Acct']" +
+                                    "/*[local-name()='Id']" +
+                                    "/*[local-name()='IBAN']/text()"
+                    ),
+                    lastText(document, "Id")
+            );
+
+            request.setDebtorAccount(null);
+            request.setCreditorAccount(required(verifiedAccount, "creditor account"));
 
             String amountText = firstNonBlank(text(document, "Amt"), text(document, "InstdAmt"), text(document, "IntrBkSttlmAmt"));
             if (StringUtils.hasText(amountText)) {
@@ -100,6 +132,18 @@ public class Acmt023XmlParser {
         }
 
         return attr.getTextContent();
+    }
+
+    private String xpathText(Document document, String expression) throws Exception {
+        String value = XPathFactory.newInstance()
+                .newXPath()
+                .evaluate(expression, document);
+
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        return value.trim();
     }
 
     private String firstNonBlank(String... values) {

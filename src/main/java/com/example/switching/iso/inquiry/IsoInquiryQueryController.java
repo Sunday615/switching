@@ -20,6 +20,8 @@ public class IsoInquiryQueryController {
     public ResponseEntity<IsoInquiryQueryResponse> findByInquiryRef(
             @PathVariable String inquiryRef
     ) {
-        return ResponseEntity.ok(service.findByInquiryRef(inquiryRef));
+        return service.findByInquiryRef(inquiryRef)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

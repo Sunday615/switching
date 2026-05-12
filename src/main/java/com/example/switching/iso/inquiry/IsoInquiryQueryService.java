@@ -3,12 +3,11 @@ package com.example.switching.iso.inquiry;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.Optional;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class IsoInquiryQueryService {
@@ -19,9 +18,9 @@ public class IsoInquiryQueryService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public IsoInquiryQueryResponse findByInquiryRef(String inquiryRef) {
+    public Optional<IsoInquiryQueryResponse> findByInquiryRef(String inquiryRef) {
         if (!StringUtils.hasText(inquiryRef)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "inquiryRef is required");
+            return Optional.empty();
         }
 
         IsoInquiryQueryResponse response = jdbcTemplate.query(
@@ -63,51 +62,58 @@ public class IsoInquiryQueryService {
                 inquiryRef.trim()
         );
 
-        if (response == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "ISO inquiry not found: " + inquiryRef
-            );
-        }
-
-        return response;
+        return Optional.ofNullable(response);
     }
 
     private IsoInquiryQueryResponse mapRow(ResultSet rs) throws SQLException {
         IsoInquiryQueryResponse response = new IsoInquiryQueryResponse();
 
         response.setId(rs.getLong("id"));
-        response.setInquiryRef(rs.getString("inquiry_ref"));
-        response.setChannelId(rs.getString("channel_id"));
-        response.setMessageId(rs.getString("message_id"));
-        response.setInstructionId(rs.getString("instruction_id"));
-        response.setEndToEndId(rs.getString("end_to_end_id"));
+        response.setInquiryRef(clean(rs.getString("inquiry_ref")));
+        response.setChannelId(clean(rs.getString("channel_id")));
+        response.setMessageId(clean(rs.getString("message_id")));
+        response.setInstructionId(clean(rs.getString("instruction_id")));
+        response.setEndToEndId(clean(rs.getString("end_to_end_id")));
 
-        response.setSourceBank(rs.getString("source_bank_code"));
-        response.setDestinationBank(rs.getString("destination_bank_code"));
+        response.setSourceBank(clean(rs.getString("source_bank_code")));
+        response.setDestinationBank(clean(rs.getString("destination_bank_code")));
 
-        response.setDebtorAccount(rs.getString("debtor_account_no"));
-        response.setCreditorAccount(rs.getString("creditor_account_no"));
+        /*
+         * Current local ACMT.023 profile verifies the destination / creditor account.
+         * Do not expose the verified ACMT.023 account as debtorAccount.
+         *
+         * This also hides older dirty rows where debtor_account_no may contain raw XML whitespace.
+         */
+        response.setDebtorAccount(null);
+        response.setCreditorAccount(clean(rs.getString("creditor_account_no")));
 
         response.setAmount(rs.getBigDecimal("amount"));
-        response.setCurrency(rs.getString("currency"));
-        response.setReference(rs.getString("reference"));
+        response.setCurrency(clean(rs.getString("currency")));
+        response.setReference(clean(rs.getString("reference")));
 
-        response.setStatus(rs.getString("status"));
+        response.setStatus(clean(rs.getString("status")));
         response.setAccountFound(rs.getBoolean("account_found"));
         response.setBankAvailable(rs.getBoolean("bank_available"));
         response.setEligibleForTransfer(rs.getBoolean("eligible_for_transfer"));
 
-        response.setFailureCode(rs.getString("failure_code"));
-        response.setFailureMessage(rs.getString("failure_message"));
+        response.setFailureCode(clean(rs.getString("failure_code")));
+        response.setFailureMessage(clean(rs.getString("failure_message")));
 
         response.setExpiresAt(toLocalDateTime(rs.getTimestamp("expires_at")));
-        response.setUsedByTransferRef(rs.getString("used_by_transfer_ref"));
+        response.setUsedByTransferRef(clean(rs.getString("used_by_transfer_ref")));
 
         response.setCreatedAt(toLocalDateTime(rs.getTimestamp("created_at")));
         response.setUpdatedAt(toLocalDateTime(rs.getTimestamp("updated_at")));
 
         return response;
+    }
+
+    private String clean(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        return value.trim();
     }
 
     private java.time.LocalDateTime toLocalDateTime(Timestamp timestamp) {
