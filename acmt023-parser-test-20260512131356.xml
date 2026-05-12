@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:acmt.023.001.03">
+  <IdVrfctnReq>
+    <Assgnmt>
+      <MsgId>ACMT023-BANKA-ISO-20260512131356</MsgId>
+      <CreDtTm>2026-05-12T03:00:00Z</CreDtTm>
+    </Assgnmt>
+    <Vrfctn>
+      <Id>VERIFY-20260512131356</Id>
+      <PtyAndAcctId>
+        <Acct>
+          <Id>
+            <Othr>
+              <Id>020200000001</Id>
+            </Othr>
+          </Id>
+        </Acct>
+      </PtyAndAcctId>
+    </Vrfctn>
+    <DbtrAgt>
+      <FinInstnId>
+        <BICFI>BANK_A</BICFI>
+      </FinInstnId>
+    </DbtrAgt>
+    <CdtrAgt>
+      <FinInstnId>
+        <BICFI>BANK_B</BICFI>
+      </FinInstnId>
+    </CdtrAgt>
+    <RmtInf>
+      <Ustrd>ISO inquiry before transfer 20260512131356</Ustrd>
+    </RmtInf>
+  </IdVrfctnReq>
+</Document>

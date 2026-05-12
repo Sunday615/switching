@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.12">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>MSG-BANKA-ISO-INQ4-20260512141827</MsgId>
+      <CreDtTm>2026-05-12T03:00:00Z</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId>
+        <InstrId>INST-BANKA-ISO-INQ4-20260512141827</InstrId>
+        <EndToEndId>E2E-BANKA-ISO-INQ4-20260512141827</EndToEndId>
+      </PmtId>
+      <IntrBkSttlmAmt Ccy="LAK">150000.00</IntrBkSttlmAmt>
+      <DbtrAgt>
+        <FinInstnId>
+          <BICFI>BANK_A</BICFI>
+        </FinInstnId>
+      </DbtrAgt>
+      <CdtrAgt>
+        <FinInstnId>
+          <BICFI>BANK_B</BICFI>
+        </FinInstnId>
+      </CdtrAgt>
+      <DbtrAcct>
+        <Id>
+          <Othr>
+            <Id>010100000001</Id>
+          </Othr>
+        </Id>
+      </DbtrAcct>
+      <CdtrAcct>
+        <Id>
+          <Othr>
+            <Id>020200000001</Id>
+          </Othr>
+        </Id>
+      </CdtrAcct>
+      <RmtInf>
+        <Ustrd>ISO-INQ-4B payment test</Ustrd>
+      </RmtInf>
+    </CdtTrfTxInf>
+
+    <SplmtryData>
+      <PlcAndNm>LAO_SWITCHING_INQUIRY_REF</PlcAndNm>
+      <Envlp>
+        <InquiryRef>INQ-20260512T13582-6546D1BF</InquiryRef>
+      </Envlp>
+    </SplmtryData>
+  </FIToFICstmrCdtTrf>
+</Document>

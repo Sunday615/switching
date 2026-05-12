@@ -15,6 +15,8 @@ import org.w3c.dom.Node;
 @Component
 public class Pacs008InboundParser {
 
+    private static final String INQUIRY_REF_MARKER = "LAO_SWITCHING_INQUIRY_REF";
+
     public Pacs008InboundRequest parse(String xml) {
         try {
             DocumentBuilderFactory factory = secureDocumentBuilderFactory();
@@ -55,6 +57,8 @@ public class Pacs008InboundParser {
             Element remittanceInformationElement = firstElement(transaction, "RmtInf");
             String remittanceInformation = text(firstElement(remittanceInformationElement, "Ustrd"));
 
+            String inquiryRef = inquiryRef(document);
+
             return new Pacs008InboundRequest(
                     messageId,
                     creationDateTime,
@@ -67,7 +71,8 @@ public class Pacs008InboundParser {
                     creditorAgentBic,
                     debtorAccount,
                     creditorAccount,
-                    remittanceInformation
+                    remittanceInformation,
+                    inquiryRef
             );
         } catch (Exception e) {
             throw new IllegalArgumentException("Invalid PACS.008 XML: " + e.getMessage(), e);
@@ -87,6 +92,58 @@ public class Pacs008InboundParser {
         factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
 
         return factory;
+    }
+
+    private String inquiryRef(Document document) {
+        /*
+         * ISO-INQ-2:
+         * Read InquiryRef from the local supplementary data profile:
+         *
+         * <SplmtryData>
+         *   <PlcAndNm>LAO_SWITCHING_INQUIRY_REF</PlcAndNm>
+         *   <Envlp>
+         *     <InquiryRef>INQ-...</InquiryRef>
+         *   </Envlp>
+         * </SplmtryData>
+         *
+         * We prefer the InquiryRef inside the matching SplmtryData block.
+         * If the marker is not present but InquiryRef exists, fall back to the first
+         * InquiryRef for backward-compatible tests and local simulator usage.
+         */
+        Element root = document == null ? null : document.getDocumentElement();
+        Element supplementaryData = supplementaryDataByMarker(root, INQUIRY_REF_MARKER);
+
+        if (supplementaryData != null) {
+            String value = text(firstElement(supplementaryData, "InquiryRef"));
+            if (value != null) {
+                return value;
+            }
+        }
+
+        return text(firstElement(root, "InquiryRef"));
+    }
+
+    private Element supplementaryDataByMarker(Node root, String marker) {
+        if (root == null || marker == null) {
+            return null;
+        }
+
+        if (root instanceof Element element && "SplmtryData".equals(element.getLocalName())) {
+            String placeAndName = text(firstElement(element, "PlcAndNm"));
+            if (marker.equals(placeAndName)) {
+                return element;
+            }
+        }
+
+        for (int i = 0; i < root.getChildNodes().getLength(); i++) {
+            Node child = root.getChildNodes().item(i);
+            Element found = supplementaryDataByMarker(child, marker);
+            if (found != null) {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     private Element firstElement(Node root, String localName) {

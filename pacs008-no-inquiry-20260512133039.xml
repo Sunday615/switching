@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.12">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>MSG-BANKA-ISO-20260512133039</MsgId>
+      <CreDtTm>2026-05-11T10:00:00Z</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId>
+        <InstrId>INST-BANKA-ISO-20260512133039</InstrId>
+        <EndToEndId>E2E-BANKA-ISO-20260512133039</EndToEndId>
+      </PmtId>
+      <IntrBkSttlmAmt Ccy="LAK">150000.00</IntrBkSttlmAmt>
+      <DbtrAgt>
+        <FinInstnId>
+          <BICFI>BANK_A</BICFI>
+        </FinInstnId>
+      </DbtrAgt>
+      <CdtrAgt>
+        <FinInstnId>
+          <BICFI>BANK_B</BICFI>
+        </FinInstnId>
+      </CdtrAgt>
+      <DbtrAcct>
+        <Id>
+          <Othr>
+            <Id>010100000001</Id>
+          </Othr>
+        </Id>
+      </DbtrAcct>
+      <CdtrAcct>
+        <Id>
+          <Othr>
+            <Id>020200000001</Id>
+          </Othr>
+        </Id>
+      </CdtrAcct>
+      <RmtInf>
+        <Ustrd>ISO only payment test BANK_A to BANK_B</Ustrd>
+      </RmtInf>
+    </CdtTrfTxInf>
+  </FIToFICstmrCdtTrf>
+</Document>

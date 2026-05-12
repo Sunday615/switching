@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:acmt.023.001.03">
+  <IdVrfctnReq>
+    <Assgnmt>
+      <MsgId>ACMT023-BANKA-ISO-INQ4-20260512141827</MsgId>
+      <CreDtTm>2026-05-12T03:00:00Z</CreDtTm>
+    </Assgnmt>
+    <Vrfctn>
+      <Id>VERIFY-ISO-INQ4-20260512141827</Id>
+      <PtyAndAcctId>
+        <Acct>
+          <Id>
+            <Othr>
+              <Id>020200000001</Id>
+            </Othr>
+          </Id>
+        </Acct>
+      </PtyAndAcctId>
+    </Vrfctn>
+    <DbtrAgt>
+      <FinInstnId>
+        <BICFI>BANK_A</BICFI>
+      </FinInstnId>
+    </DbtrAgt>
+    <CdtrAgt>
+      <FinInstnId>
+        <BICFI>BANK_B</BICFI>
+      </FinInstnId>
+    </CdtrAgt>
+    <RmtInf>
+      <Ustrd>ISO-INQ-4A/4B inquiry test 20260512141827</Ustrd>
+    </RmtInf>
+  </IdVrfctnReq>
+</Document>
