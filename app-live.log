@@ -79,3 +79,26 @@
 2026-05-12T10:00:11.531+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.worker.OutboxDispatchWorker      : Outbox worker found 1 pending event(s)
 2026-05-12T10:00:11.547+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Claimed outboxEventId=10 transferRef=TRX-20260512100009-A331B57A as PROCESSING
 2026-05-12T10:00:11.602+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Outbox dispatch success: outboxEventId=10 transferRef=TRX-20260512100009-A331B57A
+2026-05-12T10:13:53.030+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.worker.OutboxDispatchWorker      : Outbox worker found 1 pending event(s)
+2026-05-12T10:13:53.047+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Claimed outboxEventId=11 transferRef=TRX-20260512101351-274C5111 as PROCESSING
+2026-05-12T10:13:53.091+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Outbox dispatch success: outboxEventId=11 transferRef=TRX-20260512101351-274C5111
+2026-05-12T10:14:13.115+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.worker.OutboxDispatchWorker      : Outbox worker found 1 pending event(s)
+2026-05-12T10:14:13.123+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Claimed outboxEventId=12 transferRef=TRX-20260512101410-D25E83BD as PROCESSING
+2026-05-12T10:14:13.146+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Outbox dispatch success: outboxEventId=12 transferRef=TRX-20260512101410-D25E83BD
+2026-05-12T10:14:28.165+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.worker.OutboxDispatchWorker      : Outbox worker found 1 pending event(s)
+2026-05-12T10:14:28.169+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Claimed outboxEventId=13 transferRef=TRX-20260512101423-E9A90F8C as PROCESSING
+2026-05-12T10:14:28.378+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Outbox dispatch success: outboxEventId=13 transferRef=TRX-20260512101423-E9A90F8C
+2026-05-12T10:14:48.411+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.worker.OutboxDispatchWorker      : Outbox worker found 1 pending event(s)
+2026-05-12T10:14:48.416+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Claimed outboxEventId=14 transferRef=TRX-20260512101445-EC708A0A as PROCESSING
+2026-05-12T10:14:48.442+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Outbox dispatch success: outboxEventId=14 transferRef=TRX-20260512101445-EC708A0A
+2026-05-12T10:15:28.506+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.worker.OutboxDispatchWorker      : Outbox worker found 1 pending event(s)
+2026-05-12T10:15:28.539+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Claimed outboxEventId=15 transferRef=TRX-20260512101525-C91E8FA1 as PROCESSING
+2026-05-12T10:15:28.581+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Outbox dispatch success: outboxEventId=15 transferRef=TRX-20260512101525-C91E8FA1
+2026-05-12T10:21:49.217+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.worker.OutboxDispatchWorker      : Outbox worker found 1 pending event(s)
+2026-05-12T10:21:49.250+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Claimed outboxEventId=16 transferRef=TRX-20260512102149-016DFD4E as PROCESSING
+2026-05-12T10:21:49.313+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Outbox dispatch success: outboxEventId=16 transferRef=TRX-20260512102149-016DFD4E
+2026-05-12T11:11:10.627+07:00  INFO 41017 --- [switching] [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-05-12T11:11:10.681+07:00  INFO 41017 --- [switching] [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+2026-05-12T11:11:10.781+07:00  INFO 41017 --- [switching] [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-05-12T11:11:10.844+07:00  INFO 41017 --- [switching] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
+2026-05-12T11:11:10.851+07:00  INFO 41017 --- [switching] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
