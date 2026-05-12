@@ -9,7 +9,7 @@
 [INFO] 
 [INFO] --- resources:3.3.1:resources (default-resources) @ switching ---
 [INFO] Copying 2 resources from src/main/resources to target/classes
-[INFO] Copying 11 resources from src/main/resources to target/classes
+[INFO] Copying 12 resources from src/main/resources to target/classes
 [INFO] 
 [INFO] --- compiler:3.14.1:compile (default-compile) @ switching ---
 [INFO] Nothing to compile - all classes are up to date.
@@ -35,26 +35,26 @@
 
  :: Spring Boot ::                (v4.0.3)
 
-2026-05-11T14:59:09.737+07:00  INFO 33900 --- [switching] [           main] c.e.switching.SwitchingApplication       : Starting SwitchingApplication using Java 21.0.10 with PID 33900 (/Users/macbookpro/Desktop/Switching/target/classes started by macbookpro in /Users/macbookpro/Desktop/Switching)
-2026-05-11T14:59:09.742+07:00  INFO 33900 --- [switching] [           main] c.e.switching.SwitchingApplication       : No active profile set, falling back to 1 default profile: "default"
-2026-05-11T14:59:10.064+07:00  INFO 33900 --- [switching] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
-2026-05-11T14:59:10.105+07:00  INFO 33900 --- [switching] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 35 ms. Found 12 JPA repository interfaces.
-2026-05-11T14:59:10.454+07:00  INFO 33900 --- [switching] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 8080 (http)
-2026-05-11T14:59:10.461+07:00  INFO 33900 --- [switching] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
-2026-05-11T14:59:10.461+07:00  INFO 33900 --- [switching] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.18]
-2026-05-11T14:59:10.484+07:00  INFO 33900 --- [switching] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 706 ms
-2026-05-11T14:59:10.973+07:00  INFO 33900 --- [switching] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:mysql://localhost:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true (MySQL 9.5)
-2026-05-11T14:59:10.981+07:00  WARN 33900 --- [switching] [           main] o.f.c.internal.database.base.Database    : Using MySQL 9.5 which is newer than the version Flyway has been verified with. The latest verified version of MySQL is 8.1.
-2026-05-11T14:59:11.029+07:00  INFO 33900 --- [switching] [           main] o.f.core.internal.command.DbValidate     : Successfully validated 10 migrations (execution time 00:00.041s)
-2026-05-11T14:59:11.039+07:00  INFO 33900 --- [switching] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema `switching_db`: 10
-2026-05-11T14:59:11.041+07:00  INFO 33900 --- [switching] [           main] o.f.core.internal.command.DbMigrate      : Schema `switching_db` is up to date. No migration necessary.
-2026-05-11T14:59:11.098+07:00  INFO 33900 --- [switching] [           main] org.hibernate.orm.jpa                    : HHH008540: Processing PersistenceUnitInfo [name: default]
-2026-05-11T14:59:11.128+07:00  INFO 33900 --- [switching] [           main] org.hibernate.orm.core                   : HHH000001: Hibernate ORM core version 7.2.4.Final
-2026-05-11T14:59:11.320+07:00  INFO 33900 --- [switching] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
-2026-05-11T14:59:11.337+07:00  INFO 33900 --- [switching] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
-2026-05-11T14:59:11.349+07:00  INFO 33900 --- [switching] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection com.mysql.cj.jdbc.ConnectionImpl@5002be8e
-2026-05-11T14:59:11.350+07:00  INFO 33900 --- [switching] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
-2026-05-11T14:59:11.387+07:00  INFO 33900 --- [switching] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+2026-05-12T09:59:03.090+07:00  INFO 41017 --- [switching] [           main] c.e.switching.SwitchingApplication       : Starting SwitchingApplication using Java 21.0.10 with PID 41017 (/Users/macbookpro/Desktop/Switching/target/classes started by macbookpro in /Users/macbookpro/Desktop/Switching)
+2026-05-12T09:59:03.091+07:00  INFO 41017 --- [switching] [           main] c.e.switching.SwitchingApplication       : No active profile set, falling back to 1 default profile: "default"
+2026-05-12T09:59:03.416+07:00  INFO 41017 --- [switching] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-05-12T09:59:03.458+07:00  INFO 41017 --- [switching] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 37 ms. Found 12 JPA repository interfaces.
+2026-05-12T09:59:03.832+07:00  INFO 41017 --- [switching] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 8080 (http)
+2026-05-12T09:59:03.840+07:00  INFO 41017 --- [switching] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-05-12T09:59:03.840+07:00  INFO 41017 --- [switching] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.18]
+2026-05-12T09:59:03.865+07:00  INFO 41017 --- [switching] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 749 ms
+2026-05-12T09:59:04.252+07:00  INFO 41017 --- [switching] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:mysql://localhost:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true (MySQL 9.5)
+2026-05-12T09:59:04.287+07:00  WARN 41017 --- [switching] [           main] o.f.c.internal.database.base.Database    : Using MySQL 9.5 which is newer than the version Flyway has been verified with. The latest verified version of MySQL is 8.1.
+2026-05-12T09:59:04.332+07:00  INFO 41017 --- [switching] [           main] o.f.core.internal.command.DbValidate     : Successfully validated 11 migrations (execution time 00:00.027s)
+2026-05-12T09:59:04.340+07:00  INFO 41017 --- [switching] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema `switching_db`: 11
+2026-05-12T09:59:04.343+07:00  INFO 41017 --- [switching] [           main] o.f.core.internal.command.DbMigrate      : Schema `switching_db` is up to date. No migration necessary.
+2026-05-12T09:59:04.400+07:00  INFO 41017 --- [switching] [           main] org.hibernate.orm.jpa                    : HHH008540: Processing PersistenceUnitInfo [name: default]
+2026-05-12T09:59:04.432+07:00  INFO 41017 --- [switching] [           main] org.hibernate.orm.core                   : HHH000001: Hibernate ORM core version 7.2.4.Final
+2026-05-12T09:59:04.651+07:00  INFO 41017 --- [switching] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-05-12T09:59:04.667+07:00  INFO 41017 --- [switching] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-05-12T09:59:04.673+07:00  INFO 41017 --- [switching] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection com.mysql.cj.jdbc.ConnectionImpl@5002be8e
+2026-05-12T09:59:04.674+07:00  INFO 41017 --- [switching] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-05-12T09:59:04.713+07:00  INFO 41017 --- [switching] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
 	Database JDBC URL [jdbc:mysql://localhost:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true]
 	Database driver: MySQL Connector/J
 	Database dialect: MySQLDialect
@@ -66,24 +66,16 @@
 	Pool: DataSourceConnectionProvider
 	Minimum pool size: undefined/unknown
 	Maximum pool size: undefined/unknown
-2026-05-11T14:59:11.881+07:00  INFO 33900 --- [switching] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
-2026-05-11T14:59:11.910+07:00  INFO 33900 --- [switching] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
-2026-05-11T14:59:11.949+07:00  INFO 33900 --- [switching] [           main] o.s.d.j.r.query.QueryEnhancerFactories   : Hibernate is in classpath; If applicable, HQL parser will be used.
-2026-05-11T14:59:12.664+07:00  INFO 33900 --- [switching] [           main] o.s.b.w.a.WelcomePageHandlerMapping      : Adding welcome page: class path resource [static/index.html]
-2026-05-11T14:59:12.874+07:00  INFO 33900 --- [switching] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 2 endpoints beneath base path '/actuator'
-2026-05-11T14:59:12.924+07:00  INFO 33900 --- [switching] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 8080 (http) with context path '/'
-2026-05-11T14:59:12.930+07:00  INFO 33900 --- [switching] [           main] c.e.switching.SwitchingApplication       : Started SwitchingApplication in 3.411 seconds (process running for 3.603)
-2026-05-11T14:59:30.361+07:00  INFO 33900 --- [switching] [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
-2026-05-11T14:59:30.362+07:00  INFO 33900 --- [switching] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
-2026-05-11T14:59:30.368+07:00  INFO 33900 --- [switching] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 6 ms
-2026-05-11T15:11:11.640+07:00  INFO 33900 --- [switching] [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
-2026-05-11T15:11:11.648+07:00  INFO 33900 --- [switching] [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
-2026-05-11T15:11:11.659+07:00  INFO 33900 --- [switching] [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
-2026-05-11T15:11:11.662+07:00  INFO 33900 --- [switching] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
-2026-05-11T15:11:11.664+07:00  INFO 33900 --- [switching] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
-[INFO] ------------------------------------------------------------------------
-[INFO] BUILD SUCCESS
-[INFO] ------------------------------------------------------------------------
-[INFO] Total time:  12:03 min
-[INFO] Finished at: 2026-05-11T15:11:11+07:00
-[INFO] ------------------------------------------------------------------------
+2026-05-12T09:59:05.224+07:00  INFO 41017 --- [switching] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-05-12T09:59:05.258+07:00  INFO 41017 --- [switching] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-05-12T09:59:05.300+07:00  INFO 41017 --- [switching] [           main] o.s.d.j.r.query.QueryEnhancerFactories   : Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-05-12T09:59:06.041+07:00  INFO 41017 --- [switching] [           main] o.s.b.w.a.WelcomePageHandlerMapping      : Adding welcome page: class path resource [static/index.html]
+2026-05-12T09:59:06.231+07:00  INFO 41017 --- [switching] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 2 endpoints beneath base path '/actuator'
+2026-05-12T09:59:06.268+07:00  INFO 41017 --- [switching] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 8080 (http) with context path '/'
+2026-05-12T09:59:06.274+07:00  INFO 41017 --- [switching] [           main] c.e.switching.SwitchingApplication       : Started SwitchingApplication in 3.376 seconds (process running for 3.551)
+2026-05-12T10:00:09.867+07:00  INFO 41017 --- [switching] [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-05-12T10:00:09.869+07:00  INFO 41017 --- [switching] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-05-12T10:00:09.873+07:00  INFO 41017 --- [switching] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 4 ms
+2026-05-12T10:00:11.531+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.worker.OutboxDispatchWorker      : Outbox worker found 1 pending event(s)
+2026-05-12T10:00:11.547+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Claimed outboxEventId=10 transferRef=TRX-20260512100009-A331B57A as PROCESSING
+2026-05-12T10:00:11.602+07:00  INFO 41017 --- [switching] [   scheduling-1] c.e.s.o.service.OutboxProcessorService   : Outbox dispatch success: outboxEventId=10 transferRef=TRX-20260512100009-A331B57A

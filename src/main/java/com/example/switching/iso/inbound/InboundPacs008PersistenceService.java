@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.example.switching.audit.service.AuditLogService;
 import com.example.switching.common.util.TransferRefGenerator;
 import com.example.switching.iso.entity.IsoMessageEntity;
 import com.example.switching.iso.enums.IsoMessageDirection;
@@ -18,6 +19,7 @@ import com.example.switching.iso.enums.IsoMessageType;
 import com.example.switching.iso.enums.IsoSecurityStatus;
 import com.example.switching.iso.enums.IsoValidationStatus;
 import com.example.switching.iso.repository.IsoMessageRepository;
+import com.example.switching.iso.security.IsoMessageCryptoService;
 import com.example.switching.transfer.entity.TransferEntity;
 import com.example.switching.transfer.entity.TransferStatusHistoryEntity;
 import com.example.switching.transfer.enums.TransferStatus;
@@ -34,6 +36,8 @@ public class InboundPacs008PersistenceService {
     private final TransferRepository transferRepository;
     private final TransferStatusHistoryRepository transferStatusHistoryRepository;
     private final IsoMessageRepository isoMessageRepository;
+    private final IsoMessageCryptoService isoMessageCryptoService;
+    private final AuditLogService auditLogService;
     private final JdbcTemplate jdbcTemplate;
 
     public InboundPacs008PersistenceService(
@@ -41,12 +45,16 @@ public class InboundPacs008PersistenceService {
             TransferRepository transferRepository,
             TransferStatusHistoryRepository transferStatusHistoryRepository,
             IsoMessageRepository isoMessageRepository,
+            IsoMessageCryptoService isoMessageCryptoService,
+            AuditLogService auditLogService,
             JdbcTemplate jdbcTemplate
     ) {
         this.transferRefGenerator = transferRefGenerator;
         this.transferRepository = transferRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
         this.isoMessageRepository = isoMessageRepository;
+        this.isoMessageCryptoService = isoMessageCryptoService;
+        this.auditLogService = auditLogService;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -58,17 +66,40 @@ public class InboundPacs008PersistenceService {
         String transferRef = transferRefGenerator.generate();
         LocalDateTime now = LocalDateTime.now();
 
+        String clientTransferId = firstNonBlank(
+                request.getInstructionId(),
+                request.getEndToEndId(),
+                request.getMessageId(),
+                transferRef
+        );
+
+        /*
+         * ISO-only idempotency:
+         * If a member bank retries the same PACS.008 instruction, return the
+         * existing transferRef instead of creating a duplicate transfer row.
+         */
+        Optional<String> existingTransferRef = findExistingIsoInboundTransferRef(clientTransferId);
+        if (existingTransferRef.isPresent()) {
+            return new InboundPacs008PersistResult(existingTransferRef.get());
+        }
+
         RouteResolution route = resolveRoute(
                 request.getDebtorAgentBic(),
                 request.getCreditorAgentBic(),
                 MESSAGE_TYPE_PACS_008
         );
 
-        String clientTransferId = firstNonBlank(
-                request.getInstructionId(),
-                request.getEndToEndId(),
-                request.getMessageId(),
-                transferRef
+        auditLogService.log(
+                "ISO_PACS008_INBOUND_RECEIVED",
+                "TRANSFER",
+                transferRef,
+                ISO_INBOUND_CHANNEL_ID,
+                buildInboundReceivedAuditPayload(
+                        transferRef,
+                        clientTransferId,
+                        request,
+                        route
+                )
         );
 
         String idempotencyKey = "ISO20022:"
@@ -115,8 +146,21 @@ public class InboundPacs008PersistenceService {
         transferRepository.save(transfer);
 
         saveTransferHistory(transferRef, now);
-
         saveInboundIsoMessage(transferRef, request, rawXml, now);
+
+        auditLogService.log(
+                "TRANSFER_CREATED_FROM_PACS008",
+                "TRANSFER",
+                transferRef,
+                ISO_INBOUND_CHANNEL_ID,
+                buildTransferCreatedAuditPayload(
+                        transferRef,
+                        clientTransferId,
+                        idempotencyKey,
+                        request,
+                        route
+                )
+        );
 
         /*
          * ISO-IN-1B.2A:
@@ -124,7 +168,34 @@ public class InboundPacs008PersistenceService {
          * outbox worker can continue the same dispatch path as the old JSON flow.
          */
         Long outboundIsoMessageId = saveOutboundIsoMessage(transferRef, request, rawXml, now);
+
+        auditLogService.log(
+                "ISO_PACS008_OUTBOUND_CREATED",
+                "TRANSFER",
+                transferRef,
+                ISO_INBOUND_CHANNEL_ID,
+                buildOutboundCreatedAuditPayload(
+                        transferRef,
+                        outboundIsoMessageId,
+                        request,
+                        route
+                )
+        );
+
         enqueueTransferDispatchOutbox(transferRef, request, route, outboundIsoMessageId, now);
+
+        auditLogService.log(
+                "TRANSFER_QUEUED_FOR_DISPATCH",
+                "TRANSFER",
+                transferRef,
+                ISO_INBOUND_CHANNEL_ID,
+                buildQueuedForDispatchAuditPayload(
+                        transferRef,
+                        outboundIsoMessageId,
+                        request,
+                        route
+                )
+        );
 
         return new InboundPacs008PersistResult(transferRef);
     }
@@ -171,18 +242,6 @@ public class InboundPacs008PersistenceService {
 
         setXmlPayload(isoMessage, rawXml);
 
-        /*
-         * Compatibility for the existing outbox worker:
-         * OutboxIsoMessageDispatchService requires encryptedPayload when
-         * securityStatus = ENCRYPTED.
-         *
-         * For ISO-IN-1B.2A we reuse rawXml as encryptedPayload so the existing
-         * mock connector dispatch path can be proven end-to-end.
-         *
-         * Later hardening should replace this with the real encryption service.
-         */
-        setEncryptedPayload(isoMessage, rawXml);
-
         setValueIfPresent(isoMessage, null, "errorCode");
         setValueIfPresent(isoMessage, null, "errorMessage");
         setValueIfPresent(isoMessage, now, "createdAt", "createdDate", "createdOn");
@@ -218,7 +277,17 @@ public class InboundPacs008PersistenceService {
         setEnumOrStringValue(isoMessage, "securityStatus", IsoSecurityStatus.ENCRYPTED);
 
         setXmlPayload(isoMessage, rawXml);
-        
+
+        /*
+         * ISO-ONLY-4B:
+         * Use the real ISO message crypto service for outbound PACS.008.
+         *
+         * The outbox worker requires encryptedPayload when securityStatus = ENCRYPTED.
+         * Keep the plain XML in plainPayload for internal trace/debug visibility,
+         * and store the encrypted/base64 payload in encryptedPayload for dispatch.
+         */
+        String encryptedPayload = isoMessageCryptoService.encrypt(rawXml);
+        setEncryptedPayload(isoMessage, encryptedPayload);
 
         setValueIfPresent(isoMessage, null, "errorCode");
         setValueIfPresent(isoMessage, null, "errorMessage");
@@ -316,6 +385,32 @@ public class InboundPacs008PersistenceService {
         jdbcTemplate.update(
                 "INSERT INTO outbox_events (" + columns + ") VALUES (" + placeholders + ")",
                 values.values().toArray()
+        );
+    }
+
+    private Optional<String> findExistingIsoInboundTransferRef(String clientTransferId) {
+        if (clientTransferId == null || clientTransferId.isBlank()) {
+            return Optional.empty();
+        }
+
+        return jdbcTemplate.query(
+                """
+                SELECT transfer_ref
+                FROM transfers
+                WHERE channel_id = ?
+                  AND client_transfer_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                rs -> {
+                    if (!rs.next()) {
+                        return Optional.empty();
+                    }
+
+                    return Optional.ofNullable(rs.getString("transfer_ref"));
+                },
+                ISO_INBOUND_CHANNEL_ID,
+                clientTransferId.trim()
         );
     }
 
@@ -633,6 +728,123 @@ public class InboundPacs008PersistenceService {
         }
 
         return null;
+    }
+
+
+    private Map<String, Object> buildInboundReceivedAuditPayload(
+            String transferRef,
+            String clientTransferId,
+            Pacs008InboundRequest request,
+            RouteResolution route
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+
+        payload.put("transferRef", transferRef);
+        payload.put("channelId", ISO_INBOUND_CHANNEL_ID);
+        payload.put("clientTransferId", clientTransferId);
+        payload.put("messageType", MESSAGE_TYPE_PACS_008);
+        payload.put("direction", IsoMessageDirection.INBOUND.name());
+
+        payload.put("messageId", request.getMessageId());
+        payload.put("instructionId", request.getInstructionId());
+        payload.put("endToEndId", request.getEndToEndId());
+
+        payload.put("sourceBank", request.getDebtorAgentBic());
+        payload.put("destinationBank", request.getCreditorAgentBic());
+        payload.put("debtorAccount", request.getDebtorAccount());
+        payload.put("creditorAccount", request.getCreditorAccount());
+        payload.put("amount", request.getAmount());
+        payload.put("currency", request.getCurrency());
+        payload.put("reference", request.getRemittanceInformation());
+
+        payload.put("routeCode", route.routeCode());
+        payload.put("connectorName", route.connectorName());
+
+        return payload;
+    }
+
+    private Map<String, Object> buildTransferCreatedAuditPayload(
+            String transferRef,
+            String clientTransferId,
+            String idempotencyKey,
+            Pacs008InboundRequest request,
+            RouteResolution route
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+
+        payload.put("transferRef", transferRef);
+        payload.put("inquiryRef", null);
+        payload.put("channelId", ISO_INBOUND_CHANNEL_ID);
+        payload.put("clientTransferId", clientTransferId);
+        payload.put("idempotencyKey", idempotencyKey);
+        payload.put("status", TransferStatus.RECEIVED.name());
+
+        payload.put("sourceBank", request.getDebtorAgentBic());
+        payload.put("destinationBank", request.getCreditorAgentBic());
+        payload.put("debtorAccount", request.getDebtorAccount());
+        payload.put("creditorAccount", request.getCreditorAccount());
+        payload.put("amount", request.getAmount());
+        payload.put("currency", request.getCurrency());
+        payload.put("reference", request.getRemittanceInformation());
+
+        payload.put("routeCode", route.routeCode());
+        payload.put("connectorName", route.connectorName());
+
+        return payload;
+    }
+
+    private Map<String, Object> buildOutboundCreatedAuditPayload(
+            String transferRef,
+            Long outboundIsoMessageId,
+            Pacs008InboundRequest request,
+            RouteResolution route
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+
+        payload.put("transferRef", transferRef);
+        payload.put("isoMessageId", outboundIsoMessageId);
+        payload.put("messageType", IsoMessageType.PACS_008.name());
+        payload.put("direction", IsoMessageDirection.OUTBOUND.name());
+        payload.put("messageId", "MSG-" + transferRef);
+        payload.put("endToEndId", request.getEndToEndId());
+        payload.put("securityStatus", IsoSecurityStatus.ENCRYPTED.name());
+        payload.put("validationStatus", IsoValidationStatus.NOT_VALIDATED.name());
+        payload.put("encryptedPayloadPresent", true);
+
+        payload.put("sourceBank", request.getDebtorAgentBic());
+        payload.put("destinationBank", request.getCreditorAgentBic());
+        payload.put("routeCode", route.routeCode());
+        payload.put("connectorName", route.connectorName());
+
+        return payload;
+    }
+
+    private Map<String, Object> buildQueuedForDispatchAuditPayload(
+            String transferRef,
+            Long outboundIsoMessageId,
+            Pacs008InboundRequest request,
+            RouteResolution route
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+
+        payload.put("transferRef", transferRef);
+        payload.put("outboxMessageType", "TRANSFER_DISPATCH");
+        payload.put("isoMessageId", outboundIsoMessageId);
+        payload.put("isoMessageType", IsoMessageType.PACS_008.name());
+        payload.put("isoDirection", IsoMessageDirection.OUTBOUND.name());
+        payload.put("isoSecurityStatus", IsoSecurityStatus.ENCRYPTED.name());
+
+        payload.put("sourceBank", request.getDebtorAgentBic());
+        payload.put("destinationBank", request.getCreditorAgentBic());
+        payload.put("debtorAccount", request.getDebtorAccount());
+        payload.put("creditorAccount", request.getCreditorAccount());
+        payload.put("amount", request.getAmount());
+        payload.put("currency", request.getCurrency());
+
+        payload.put("routeCode", route.routeCode());
+        payload.put("connectorName", route.connectorName());
+
+        return payload;
     }
 
     private record RouteResolution(
