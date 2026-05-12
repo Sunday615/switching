@@ -1,12 +1,17 @@
 package com.example.switching.iso.inquiry;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
+import com.example.switching.audit.service.AuditLogService;
 
 @Service
 public class IsoInquiryInboundService {
@@ -17,15 +22,18 @@ public class IsoInquiryInboundService {
     private final Acmt023XmlParser parser;
     private final Acmt024XmlResponseBuilder responseBuilder;
     private final JdbcTemplate jdbcTemplate;
+    private final AuditLogService auditLogService;
 
     public IsoInquiryInboundService(
             Acmt023XmlParser parser,
             Acmt024XmlResponseBuilder responseBuilder,
-            JdbcTemplate jdbcTemplate
+            JdbcTemplate jdbcTemplate,
+            AuditLogService auditLogService
     ) {
         this.parser = parser;
         this.responseBuilder = responseBuilder;
         this.jdbcTemplate = jdbcTemplate;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -34,6 +42,7 @@ public class IsoInquiryInboundService {
 
         try {
             request = parser.parse(xmlBody);
+            auditAcmt023InboundReceived(request);
         } catch (Exception e) {
             Acmt023InquiryRequest fallback = new Acmt023InquiryRequest();
             fallback.setMessageId("UNKNOWN");
@@ -66,7 +75,9 @@ public class IsoInquiryInboundService {
 
         String existingInquiryRef = findExistingInquiryRef(request.getMessageId());
         if (StringUtils.hasText(existingInquiryRef)) {
-            return responseBuilder.accepted(request, existingInquiryRef);
+            String responseXml = responseBuilder.accepted(request, existingInquiryRef);
+            auditAcmt024ResponseCreated(request, existingInquiryRef, "MTCH", "EXISTING");
+            return responseXml;
         }
 
         String inquiryRef = generateInquiryRef();
@@ -124,7 +135,12 @@ public class IsoInquiryInboundService {
                 now
         );
 
-        return responseBuilder.accepted(request, inquiryRef);
+        LocalDateTime expiresAt = now.plusMinutes(INQUIRY_TTL_MINUTES);
+        auditInquiryCreated(request, inquiryRef, "ELIGIBLE", true, expiresAt, null, null);
+
+        String responseXml = responseBuilder.accepted(request, inquiryRef);
+        auditAcmt024ResponseCreated(request, inquiryRef, "MTCH", "CREATED");
+        return responseXml;
     }
 
     private String rejectAndSave(Acmt023InquiryRequest request, String code, String message) {
@@ -183,7 +199,12 @@ public class IsoInquiryInboundService {
                 now
         );
 
-        return responseBuilder.rejected(request, code, message);
+        LocalDateTime expiresAt = now.plusMinutes(INQUIRY_TTL_MINUTES);
+        auditInquiryCreated(request, inquiryRef, "REJECTED", false, expiresAt, code, message);
+
+        String responseXml = responseBuilder.rejected(request, code, message);
+        auditAcmt024ResponseCreated(request, inquiryRef, "NMTC", "REJECTED");
+        return responseXml;
     }
 
     private boolean isParticipantActive(String bankCode) {
@@ -226,14 +247,99 @@ public class IsoInquiryInboundService {
         );
     }
 
+    private void auditAcmt023InboundReceived(Acmt023InquiryRequest request) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("messageType", "ACMT_023");
+        payload.put("messageId", request.getMessageId());
+        payload.put("instructionId", request.getInstructionId());
+        payload.put("endToEndId", request.getEndToEndId());
+        payload.put("sourceBank", request.getSourceBank());
+        payload.put("destinationBank", request.getDestinationBank());
+        payload.put("debtorAccount", request.getDebtorAccount());
+        payload.put("creditorAccount", request.getCreditorAccount());
+        payload.put("amount", request.getAmount());
+        payload.put("currency", request.getCurrency());
+        payload.put("reference", request.getReference());
+
+        auditLogService.log(
+                "ISO_ACMT023_INBOUND_RECEIVED",
+                "INQUIRY",
+                request.getMessageId(),
+                ISO_CHANNEL_ID,
+                payload
+        );
+    }
+
+    private void auditInquiryCreated(
+            Acmt023InquiryRequest request,
+            String inquiryRef,
+            String status,
+            boolean eligibleForTransfer,
+            LocalDateTime expiresAt,
+            String failureCode,
+            String failureMessage
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("inquiryRef", inquiryRef);
+        payload.put("messageId", request.getMessageId());
+        payload.put("instructionId", request.getInstructionId());
+        payload.put("endToEndId", request.getEndToEndId());
+        payload.put("sourceBank", request.getSourceBank());
+        payload.put("destinationBank", request.getDestinationBank());
+        payload.put("debtorAccount", request.getDebtorAccount());
+        payload.put("creditorAccount", request.getCreditorAccount());
+        payload.put("amount", request.getAmount());
+        payload.put("currency", request.getCurrency());
+        payload.put("status", status);
+        payload.put("eligibleForTransfer", eligibleForTransfer);
+        payload.put("expiresAt", expiresAt);
+        payload.put("failureCode", failureCode);
+        payload.put("failureMessage", failureMessage);
+
+        auditLogService.log(
+                "ISO_INQUIRY_CREATED",
+                "INQUIRY",
+                inquiryRef,
+                ISO_CHANNEL_ID,
+                payload
+        );
+    }
+
+    private void auditAcmt024ResponseCreated(
+            Acmt023InquiryRequest request,
+            String inquiryRef,
+            String verificationStatus,
+            String responseReason
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("messageType", "ACMT_024");
+        payload.put("inquiryRef", inquiryRef);
+        payload.put("originalMessageId", request.getMessageId());
+        payload.put("instructionId", request.getInstructionId());
+        payload.put("endToEndId", request.getEndToEndId());
+        payload.put("verificationStatus", verificationStatus);
+        payload.put("responseReason", responseReason);
+
+        auditLogService.log(
+                "ISO_ACMT024_RESPONSE_CREATED",
+                "INQUIRY",
+                inquiryRef,
+                ISO_CHANNEL_ID,
+                payload
+        );
+    }
+
     private String generateInquiryRef() {
-        return "INQ-" + LocalDateTime.now()
+        String timestamp = DateTimeFormatter
+                .ofPattern("yyyyMMddHHmmss")
+                .format(LocalDateTime.now());
+
+        String randomSuffix = UUID.randomUUID()
                 .toString()
                 .replace("-", "")
-                .replace(":", "")
-                .replace(".", "")
-                .substring(0, 14)
-                + "-"
-                + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
+                .substring(0, 8)
+                .toUpperCase();
+
+        return "INQ-" + timestamp + "-" + randomSuffix;
     }
 }

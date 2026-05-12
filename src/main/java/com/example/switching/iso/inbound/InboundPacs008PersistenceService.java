@@ -2,6 +2,7 @@ package com.example.switching.iso.inbound;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -37,8 +38,8 @@ public class InboundPacs008PersistenceService {
     private final TransferStatusHistoryRepository transferStatusHistoryRepository;
     private final IsoMessageRepository isoMessageRepository;
     private final IsoMessageCryptoService isoMessageCryptoService;
-    private final AuditLogService auditLogService;
     private final JdbcTemplate jdbcTemplate;
+    private final AuditLogService auditLogService;
 
     public InboundPacs008PersistenceService(
             TransferRefGenerator transferRefGenerator,
@@ -46,16 +47,16 @@ public class InboundPacs008PersistenceService {
             TransferStatusHistoryRepository transferStatusHistoryRepository,
             IsoMessageRepository isoMessageRepository,
             IsoMessageCryptoService isoMessageCryptoService,
-            AuditLogService auditLogService,
-            JdbcTemplate jdbcTemplate
+            JdbcTemplate jdbcTemplate,
+            AuditLogService auditLogService
     ) {
         this.transferRefGenerator = transferRefGenerator;
         this.transferRepository = transferRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
         this.isoMessageRepository = isoMessageRepository;
         this.isoMessageCryptoService = isoMessageCryptoService;
-        this.auditLogService = auditLogService;
         this.jdbcTemplate = jdbcTemplate;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -75,31 +76,27 @@ public class InboundPacs008PersistenceService {
 
         /*
          * ISO-only idempotency:
-         * If a member bank retries the same PACS.008 instruction, return the
-         * existing transferRef instead of creating a duplicate transfer row.
+         * If a member bank retries the exact same PACS.008 instruction,
+         * return the existing transferRef instead of creating a duplicate transfer row.
+         *
+         * This must run before mandatory inquiry validation because the inquiry
+         * may already be marked USED after the first successful submission.
          */
         Optional<String> existingTransferRef = findExistingIsoInboundTransferRef(clientTransferId);
         if (existingTransferRef.isPresent()) {
             return new InboundPacs008PersistResult(existingTransferRef.get());
         }
 
+        /*
+         * Mandatory rule:
+         * Inquiry must exist before PACS.008 transfer/payment.
+         */
+        validateMandatoryIsoInquiry(request);
+
         RouteResolution route = resolveRoute(
                 request.getDebtorAgentBic(),
                 request.getCreditorAgentBic(),
                 MESSAGE_TYPE_PACS_008
-        );
-
-        auditLogService.log(
-                "ISO_PACS008_INBOUND_RECEIVED",
-                "TRANSFER",
-                transferRef,
-                ISO_INBOUND_CHANNEL_ID,
-                buildInboundReceivedAuditPayload(
-                        transferRef,
-                        clientTransferId,
-                        request,
-                        route
-                )
         );
 
         String idempotencyKey = "ISO20022:"
@@ -117,8 +114,7 @@ public class InboundPacs008PersistenceService {
         setValueIfPresent(transfer, clientTransferId, "clientTransferId", "clientTransactionId");
         setValueIfPresent(transfer, idempotencyKey, "idempotencyKey");
 
-        // ISO-only inbound transfer has no inquiryRef.
-        setValueIfPresent(transfer, null, "inquiryRef");
+        setValueIfPresent(transfer, request.getInquiryRef(), "inquiryRef");
 
         setValueIfPresent(transfer, request.getDebtorAgentBic(), "sourceBankCode", "sourceBank");
         setValueIfPresent(transfer, request.getCreditorAgentBic(), "destinationBankCode", "destinationBank");
@@ -146,21 +142,8 @@ public class InboundPacs008PersistenceService {
         transferRepository.save(transfer);
 
         saveTransferHistory(transferRef, now);
-        saveInboundIsoMessage(transferRef, request, rawXml, now);
 
-        auditLogService.log(
-                "TRANSFER_CREATED_FROM_PACS008",
-                "TRANSFER",
-                transferRef,
-                ISO_INBOUND_CHANNEL_ID,
-                buildTransferCreatedAuditPayload(
-                        transferRef,
-                        clientTransferId,
-                        idempotencyKey,
-                        request,
-                        route
-                )
-        );
+        saveInboundIsoMessage(transferRef, request, rawXml, now);
 
         /*
          * ISO-IN-1B.2A:
@@ -168,34 +151,8 @@ public class InboundPacs008PersistenceService {
          * outbox worker can continue the same dispatch path as the old JSON flow.
          */
         Long outboundIsoMessageId = saveOutboundIsoMessage(transferRef, request, rawXml, now);
-
-        auditLogService.log(
-                "ISO_PACS008_OUTBOUND_CREATED",
-                "TRANSFER",
-                transferRef,
-                ISO_INBOUND_CHANNEL_ID,
-                buildOutboundCreatedAuditPayload(
-                        transferRef,
-                        outboundIsoMessageId,
-                        request,
-                        route
-                )
-        );
-
         enqueueTransferDispatchOutbox(transferRef, request, route, outboundIsoMessageId, now);
-
-        auditLogService.log(
-                "TRANSFER_QUEUED_FOR_DISPATCH",
-                "TRANSFER",
-                transferRef,
-                ISO_INBOUND_CHANNEL_ID,
-                buildQueuedForDispatchAuditPayload(
-                        transferRef,
-                        outboundIsoMessageId,
-                        request,
-                        route
-                )
-        );
+        markInquiryUsed(request.getInquiryRef(), transferRef, now);
 
         return new InboundPacs008PersistResult(transferRef);
     }
@@ -230,7 +187,7 @@ public class InboundPacs008PersistenceService {
 
         setValueIfPresent(isoMessage, transferRef, "correlationRef");
         setValueIfPresent(isoMessage, transferRef, "transferRef");
-        setValueIfPresent(isoMessage, null, "inquiryRef");
+        setValueIfPresent(isoMessage, request.getInquiryRef(), "inquiryRef");
 
         setValueIfPresent(isoMessage, request.getMessageId(), "messageId");
         setValueIfPresent(isoMessage, request.getEndToEndId(), "endToEndId");
@@ -260,7 +217,7 @@ public class InboundPacs008PersistenceService {
 
         setValueIfPresent(isoMessage, transferRef, "correlationRef");
         setValueIfPresent(isoMessage, transferRef, "transferRef");
-        setValueIfPresent(isoMessage, null, "inquiryRef");
+        setValueIfPresent(isoMessage, request.getInquiryRef(), "inquiryRef");
 
         setValueIfPresent(isoMessage, "MSG-" + transferRef, "messageId");
         setValueIfPresent(isoMessage, request.getEndToEndId(), "endToEndId");
@@ -278,14 +235,6 @@ public class InboundPacs008PersistenceService {
 
         setXmlPayload(isoMessage, rawXml);
 
-        /*
-         * ISO-ONLY-4B:
-         * Use the real ISO message crypto service for outbound PACS.008.
-         *
-         * The outbox worker requires encryptedPayload when securityStatus = ENCRYPTED.
-         * Keep the plain XML in plainPayload for internal trace/debug visibility,
-         * and store the encrypted/base64 payload in encryptedPayload for dispatch.
-         */
         String encryptedPayload = isoMessageCryptoService.encrypt(rawXml);
         setEncryptedPayload(isoMessage, encryptedPayload);
 
@@ -730,121 +679,200 @@ public class InboundPacs008PersistenceService {
         return null;
     }
 
+    private void validateMandatoryIsoInquiry(Pacs008InboundRequest request) {
+        String inquiryRef = request.getInquiryRef();
 
-    private Map<String, Object> buildInboundReceivedAuditPayload(
-            String transferRef,
-            String clientTransferId,
-            Pacs008InboundRequest request,
-            RouteResolution route
-    ) {
-        Map<String, Object> payload = new LinkedHashMap<>();
+        if (inquiryRef == null || inquiryRef.isBlank()) {
+            throw new IllegalStateException("InquiryRef is required. Send ACMT.023 inquiry before PACS.008 transfer.");
+        }
 
-        payload.put("transferRef", transferRef);
-        payload.put("channelId", ISO_INBOUND_CHANNEL_ID);
-        payload.put("clientTransferId", clientTransferId);
-        payload.put("messageType", MESSAGE_TYPE_PACS_008);
-        payload.put("direction", IsoMessageDirection.INBOUND.name());
+        Map<String, Object> inquiry = jdbcTemplate.query(
+                """
+                SELECT inquiry_ref,
+                       status,
+                       source_bank_code,
+                       destination_bank_code,
+                       debtor_account_no,
+                       creditor_account_no,
+                       amount,
+                       currency,
+                       eligible_for_transfer,
+                       expires_at,
+                       used_by_transfer_ref
+                FROM iso_inquiries
+                WHERE inquiry_ref = ?
+                LIMIT 1
+                """,
+                rs -> {
+                    if (!rs.next()) {
+                        return null;
+                    }
 
-        payload.put("messageId", request.getMessageId());
-        payload.put("instructionId", request.getInstructionId());
-        payload.put("endToEndId", request.getEndToEndId());
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("inquiry_ref", rs.getString("inquiry_ref"));
+                    row.put("status", rs.getString("status"));
+                    row.put("source_bank_code", rs.getString("source_bank_code"));
+                    row.put("destination_bank_code", rs.getString("destination_bank_code"));
+                    row.put("debtor_account_no", rs.getString("debtor_account_no"));
+                    row.put("creditor_account_no", rs.getString("creditor_account_no"));
+                    row.put("amount", rs.getBigDecimal("amount"));
+                    row.put("currency", rs.getString("currency"));
+                    row.put("eligible_for_transfer", rs.getObject("eligible_for_transfer"));
+                    row.put("expires_at", rs.getObject("expires_at", LocalDateTime.class));
+                    row.put("used_by_transfer_ref", rs.getString("used_by_transfer_ref"));
+                    return row;
+                },
+                inquiryRef.trim()
+        );
 
-        payload.put("sourceBank", request.getDebtorAgentBic());
-        payload.put("destinationBank", request.getCreditorAgentBic());
-        payload.put("debtorAccount", request.getDebtorAccount());
-        payload.put("creditorAccount", request.getCreditorAccount());
-        payload.put("amount", request.getAmount());
-        payload.put("currency", request.getCurrency());
-        payload.put("reference", request.getRemittanceInformation());
+        if (inquiry == null) {
+            throw new IllegalStateException("InquiryRef not found: " + inquiryRef);
+        }
 
-        payload.put("routeCode", route.routeCode());
-        payload.put("connectorName", route.connectorName());
+        String status = stringValue(inquiry.get("status"));
+        if (!"ELIGIBLE".equals(status)) {
+            throw new IllegalStateException("InquiryRef is not eligible for transfer: " + inquiryRef + ", status=" + status);
+        }
 
-        return payload;
+        Boolean eligible = booleanValue(inquiry.get("eligible_for_transfer"));
+        if (!Boolean.TRUE.equals(eligible)) {
+            throw new IllegalStateException("InquiryRef is not eligible for transfer: " + inquiryRef);
+        }
+
+        LocalDateTime expiresAt = (LocalDateTime) inquiry.get("expires_at");
+        if (expiresAt != null && expiresAt.isBefore(LocalDateTime.now())) {
+            throw new IllegalStateException("InquiryRef is expired: " + inquiryRef);
+        }
+
+        String usedByTransferRef = stringValue(inquiry.get("used_by_transfer_ref"));
+        if (usedByTransferRef != null && !usedByTransferRef.isBlank()) {
+            throw new IllegalStateException("InquiryRef has already been used by transfer: " + usedByTransferRef);
+        }
+
+        requireMatch("sourceBank", stringValue(inquiry.get("source_bank_code")), request.getDebtorAgentBic());
+        requireMatch("destinationBank", stringValue(inquiry.get("destination_bank_code")), request.getCreditorAgentBic());
+
+        /*
+         * Current ACMT.023 local profile verifies the creditor/destination account only.
+         * Do not enforce debtorAccount here because the inquiry XML may carry only
+         * the account being verified, which maps to PACS.008 creditorAccount.
+         */
+
+        /*
+         * Creditor account is the main account being verified by ACMT.023 and must match PACS.008.
+         */
+        requireMatch("creditorAccount", stringValue(inquiry.get("creditor_account_no")), request.getCreditorAccount());
+
+        Object inquiryAmountValue = inquiry.get("amount");
+        if (inquiryAmountValue instanceof BigDecimal inquiryAmount && request.getAmount() != null) {
+            if (inquiryAmount.compareTo(request.getAmount()) != 0) {
+                throw new IllegalStateException(
+                        "Inquiry amount does not match PACS.008 amount. inquiry="
+                                + inquiryAmount
+                                + ", pacs008="
+                                + request.getAmount()
+                );
+            }
+        }
+
+        requireMatchIfPresent("currency", stringValue(inquiry.get("currency")), request.getCurrency());
     }
 
-    private Map<String, Object> buildTransferCreatedAuditPayload(
-            String transferRef,
-            String clientTransferId,
-            String idempotencyKey,
-            Pacs008InboundRequest request,
-            RouteResolution route
-    ) {
+    private void markInquiryUsed(String inquiryRef, String transferRef, LocalDateTime now) {
+        int updated = jdbcTemplate.update(
+                """
+                UPDATE iso_inquiries
+                SET status = 'USED',
+                    used_by_transfer_ref = ?,
+                    updated_at = ?
+                WHERE inquiry_ref = ?
+                  AND status = 'ELIGIBLE'
+                  AND used_by_transfer_ref IS NULL
+                """,
+                transferRef,
+                now,
+                inquiryRef
+        );
+
+        if (updated != 1) {
+            throw new IllegalStateException("Unable to mark InquiryRef as used: " + inquiryRef);
+        }
+
         Map<String, Object> payload = new LinkedHashMap<>();
-
+        payload.put("inquiryRef", inquiryRef);
         payload.put("transferRef", transferRef);
-        payload.put("inquiryRef", null);
-        payload.put("channelId", ISO_INBOUND_CHANNEL_ID);
-        payload.put("clientTransferId", clientTransferId);
-        payload.put("idempotencyKey", idempotencyKey);
-        payload.put("status", TransferStatus.RECEIVED.name());
+        payload.put("status", "USED");
+        payload.put("usedAt", now);
 
-        payload.put("sourceBank", request.getDebtorAgentBic());
-        payload.put("destinationBank", request.getCreditorAgentBic());
-        payload.put("debtorAccount", request.getDebtorAccount());
-        payload.put("creditorAccount", request.getCreditorAccount());
-        payload.put("amount", request.getAmount());
-        payload.put("currency", request.getCurrency());
-        payload.put("reference", request.getRemittanceInformation());
-
-        payload.put("routeCode", route.routeCode());
-        payload.put("connectorName", route.connectorName());
-
-        return payload;
+        auditLogService.log(
+                "ISO_INQUIRY_USED_BY_TRANSFER",
+                "INQUIRY",
+                inquiryRef,
+                ISO_INBOUND_CHANNEL_ID,
+                payload
+        );
     }
 
-    private Map<String, Object> buildOutboundCreatedAuditPayload(
-            String transferRef,
-            Long outboundIsoMessageId,
-            Pacs008InboundRequest request,
-            RouteResolution route
-    ) {
-        Map<String, Object> payload = new LinkedHashMap<>();
+    private void requireMatch(String fieldName, String expected, String actual) {
+        if (expected == null || expected.isBlank()) {
+            throw new IllegalStateException("Inquiry " + fieldName + " is missing");
+        }
 
-        payload.put("transferRef", transferRef);
-        payload.put("isoMessageId", outboundIsoMessageId);
-        payload.put("messageType", IsoMessageType.PACS_008.name());
-        payload.put("direction", IsoMessageDirection.OUTBOUND.name());
-        payload.put("messageId", "MSG-" + transferRef);
-        payload.put("endToEndId", request.getEndToEndId());
-        payload.put("securityStatus", IsoSecurityStatus.ENCRYPTED.name());
-        payload.put("validationStatus", IsoValidationStatus.NOT_VALIDATED.name());
-        payload.put("encryptedPayloadPresent", true);
+        if (actual == null || actual.isBlank()) {
+            throw new IllegalStateException("PACS.008 " + fieldName + " is missing");
+        }
 
-        payload.put("sourceBank", request.getDebtorAgentBic());
-        payload.put("destinationBank", request.getCreditorAgentBic());
-        payload.put("routeCode", route.routeCode());
-        payload.put("connectorName", route.connectorName());
-
-        return payload;
+        if (!expected.trim().equals(actual.trim())) {
+            throw new IllegalStateException(
+                    "Inquiry " + fieldName + " does not match PACS.008. expected="
+                            + expected
+                            + ", actual="
+                            + actual
+            );
+        }
     }
 
-    private Map<String, Object> buildQueuedForDispatchAuditPayload(
-            String transferRef,
-            Long outboundIsoMessageId,
-            Pacs008InboundRequest request,
-            RouteResolution route
-    ) {
-        Map<String, Object> payload = new LinkedHashMap<>();
+    private void requireMatchIfPresent(String fieldName, String expected, String actual) {
+        if (expected == null || expected.isBlank()) {
+            return;
+        }
 
-        payload.put("transferRef", transferRef);
-        payload.put("outboxMessageType", "TRANSFER_DISPATCH");
-        payload.put("isoMessageId", outboundIsoMessageId);
-        payload.put("isoMessageType", IsoMessageType.PACS_008.name());
-        payload.put("isoDirection", IsoMessageDirection.OUTBOUND.name());
-        payload.put("isoSecurityStatus", IsoSecurityStatus.ENCRYPTED.name());
+        if (actual == null || actual.isBlank()) {
+            throw new IllegalStateException("PACS.008 " + fieldName + " is missing");
+        }
 
-        payload.put("sourceBank", request.getDebtorAgentBic());
-        payload.put("destinationBank", request.getCreditorAgentBic());
-        payload.put("debtorAccount", request.getDebtorAccount());
-        payload.put("creditorAccount", request.getCreditorAccount());
-        payload.put("amount", request.getAmount());
-        payload.put("currency", request.getCurrency());
+        if (!expected.trim().equals(actual.trim())) {
+            throw new IllegalStateException(
+                    "Inquiry " + fieldName + " does not match PACS.008. expected="
+                            + expected
+                            + ", actual="
+                            + actual
+            );
+        }
+    }
 
-        payload.put("routeCode", route.routeCode());
-        payload.put("connectorName", route.connectorName());
+    private String stringValue(Object value) {
+        if (value == null) {
+            return null;
+        }
 
-        return payload;
+        return String.valueOf(value);
+    }
+
+    private Boolean booleanValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+
+        if (value instanceof Number numberValue) {
+            return numberValue.intValue() != 0;
+        }
+
+        return Boolean.parseBoolean(String.valueOf(value));
     }
 
     private record RouteResolution(
