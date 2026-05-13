@@ -54,18 +54,19 @@ public class TransferInquiryService {
                     ))
                     .toList();
 
-            TransferInquiryResponse response = new TransferInquiryResponse();
-            response.setTransferRef(transfer.getTransferRef());
-            response.setStatus(transfer.getStatus() == null ? null : transfer.getStatus().name());
-            response.setSourceBank(transfer.getSourceBank());
-            response.setDestinationBank(transfer.getDestinationBank());
-            response.setHistory(history);
+            TransferInquiryResponse response = toResponse(transfer, history);
 
             Map<String, Object> auditPayload = new LinkedHashMap<>();
             auditPayload.put("transferRef", response.getTransferRef());
             auditPayload.put("status", response.getStatus());
+            auditPayload.put("currentStatus", response.getCurrentStatus());
             auditPayload.put("sourceBank", response.getSourceBank());
             auditPayload.put("destinationBank", response.getDestinationBank());
+            auditPayload.put("debtorAccount", response.getDebtorAccount());
+            auditPayload.put("creditorAccount", response.getCreditorAccount());
+            auditPayload.put("amount", response.getAmount());
+            auditPayload.put("currency", response.getCurrency());
+            auditPayload.put("inquiryRef", response.getInquiryRef());
             auditPayload.put("historySize", history.size());
 
             auditLogService.log(
@@ -88,5 +89,43 @@ public class TransferInquiryService {
             );
             throw ex;
         }
+    }
+
+    private TransferInquiryResponse toResponse(
+            TransferEntity transfer,
+            List<TransferStatusHistoryItemResponse> history
+    ) {
+        String status = transfer.getStatus() == null ? null : transfer.getStatus().name();
+
+        TransferInquiryResponse response = new TransferInquiryResponse();
+        response.setTransferRef(transfer.getTransferRef());
+
+        // Keep original field and add currentStatus for trace/operations-style clients.
+        response.setStatus(status);
+        response.setCurrentStatus(status);
+
+        response.setSourceBank(transfer.getSourceBank());
+        response.setDebtorAccount(transfer.getDebtorAccount());
+        response.setDestinationBank(transfer.getDestinationBank());
+        response.setCreditorAccount(transfer.getCreditorAccount());
+
+        response.setAmount(transfer.getAmount());
+        response.setCurrency(transfer.getCurrency());
+
+        response.setInquiryRef(transfer.getInquiryRef());
+        response.setChannelId(transfer.getChannelId());
+        response.setRouteCode(transfer.getRouteCode());
+        response.setConnectorName(transfer.getConnectorName());
+        response.setExternalReference(transfer.getExternalReference());
+        response.setReference(transfer.getReference());
+
+        response.setErrorCode(transfer.getErrorCode());
+        response.setErrorMessage(transfer.getErrorMessage());
+
+        response.setCreatedAt(transfer.getCreatedAt());
+        response.setUpdatedAt(transfer.getUpdatedAt());
+
+        response.setHistory(history);
+        return response;
     }
 }
