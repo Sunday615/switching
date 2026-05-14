@@ -1,8 +1,11 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
+
   datasource:
     url: ${TEST_DB_URL:jdbc:mysql://localhost:3306/switching_clean?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true}
     username: ${TEST_DB_USERNAME:root}
-    password: ${TEST_DB_PASSWORD:REMOVED}
+    password: ${TEST_DB_PASSWORD:}   # overridden at runtime by Testcontainers via @DynamicPropertySource
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -19,7 +22,7 @@ spring:
     locations: classpath:db/migration
     url: ${TEST_DB_URL:jdbc:mysql://localhost:3306/switching_clean?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true}
     user: ${TEST_DB_USERNAME:root}
-    password: ${TEST_DB_PASSWORD:REMOVED}
+    password: ${TEST_DB_PASSWORD:}   # overridden at runtime by Testcontainers via @DynamicPropertySource
 
 switching:
   payment:
@@ -28,6 +31,16 @@ switching:
   mock-bank:
     pacs002:
       force-reject: false
-
   security:
     message-crypto-key-base64: ${TEST_MESSAGE_CRYPTO_KEY_BASE64:NImwCmFwkSIeDgy8UJtzGq86A389puEEe6gi2Wdo9MM=}
+    api-key:
+      enabled: false   # Disable auth in tests — no X-API-Key required
+    rate-limit:
+      enabled: false   # Disable rate limiting in tests
+  outbox:
+    worker:
+      poll-interval-ms: 5000    # Keep fast poll for integration tests
+      recovery-interval-ms: 60000
+      batch-size: 20
+      max-retry: 3
+      stuck-timeout-minutes: 2

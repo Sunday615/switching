@@ -8,6 +8,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -23,6 +25,8 @@ import com.example.switching.operations.dto.OperationsTransferTraceTransferRespo
 
 @Service
 public class OperationsTransferTraceService {
+
+    private static final Logger log = LoggerFactory.getLogger(OperationsTransferTraceService.class);
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -48,6 +52,7 @@ public class OperationsTransferTraceService {
         try {
             inquiry = findInquiry(transfer.inquiryRef(), normalizedTransferRef);
         } catch (Exception ex) {
+            log.error("Inquiry trace failed for transferRef={}", normalizedTransferRef, ex);
             warnings.add("INQUIRY_TRACE_UNAVAILABLE: " + ex.getClass().getSimpleName());
         }
 
@@ -57,6 +62,7 @@ public class OperationsTransferTraceService {
         try {
             outboxEvents = findOutboxEvents(normalizedTransferRef);
         } catch (Exception ex) {
+            log.error("Outbox trace failed for transferRef={}", normalizedTransferRef, ex);
             warnings.add("OUTBOX_TRACE_UNAVAILABLE: " + ex.getClass().getSimpleName());
         }
 
@@ -64,6 +70,7 @@ public class OperationsTransferTraceService {
         try {
             isoMessages = findIsoMessages(normalizedTransferRef, inquiryRef);
         } catch (Exception ex) {
+            log.error("ISO message trace failed for transferRef={}", normalizedTransferRef, ex);
             warnings.add("ISO_MESSAGE_TRACE_UNAVAILABLE: " + ex.getClass().getSimpleName());
         }
 
@@ -71,6 +78,7 @@ public class OperationsTransferTraceService {
         try {
             auditEvents = findAuditEvents(normalizedTransferRef, inquiryRef);
         } catch (Exception ex) {
+            log.error("Audit trace failed for transferRef={}", normalizedTransferRef, ex);
             warnings.add("AUDIT_TRACE_UNAVAILABLE: " + ex.getClass().getSimpleName());
         }
 
@@ -194,6 +202,20 @@ public class OperationsTransferTraceService {
             String inquiryRef,
             String transferRef
     ) {
+        // Try ISO path first (iso_inquiries table)
+        OperationsTransferTraceInquiryResponse isoResult = findIsoPathInquiry(inquiryRef, transferRef);
+        if (isoResult != null) {
+            return isoResult;
+        }
+
+        // Fall back to JSON path (inquiries table)
+        return findJsonPathInquiry(inquiryRef, transferRef);
+    }
+
+    private OperationsTransferTraceInquiryResponse findIsoPathInquiry(
+            String inquiryRef,
+            String transferRef
+    ) {
         List<Object> params = new ArrayList<>();
         List<String> conditions = new ArrayList<>();
 
@@ -237,7 +259,7 @@ public class OperationsTransferTraceService {
                     q.created_at,
                     q.updated_at
                 FROM iso_inquiries q
-                WHERE """
+                WHERE\s"""
                 + String.join(" OR ", conditions)
                 + """
 
@@ -252,13 +274,63 @@ public class OperationsTransferTraceService {
                         return null;
                     }
 
-                    return mapInquiry(rs);
+                    return mapIsoInquiry(rs);
                 },
                 params.toArray()
         );
     }
 
-    private OperationsTransferTraceInquiryResponse mapInquiry(ResultSet rs)
+    /**
+     * Fallback: look up a JSON-path inquiry from the {@code inquiries} table.
+     * JSON-path inquiries do not have ISO-specific fields (messageId, instructionId,
+     * endToEndId, debtorAccount, expiresAt) — those are returned as {@code null}.
+     * The {@code usedByTransferRef} is inferred from the {@code transferRef} context
+     * because the {@code inquiries} table has no direct back-reference column.
+     */
+    private OperationsTransferTraceInquiryResponse findJsonPathInquiry(
+            String inquiryRef,
+            String transferRef
+    ) {
+        if (!StringUtils.hasText(inquiryRef)) {
+            return null;
+        }
+
+        return jdbcTemplate.query(
+                """
+                SELECT
+                    q.id,
+                    q.inquiry_ref,
+                    q.channel_id,
+                    q.source_bank,
+                    q.destination_bank,
+                    q.creditor_account,
+                    q.amount,
+                    q.currency,
+                    q.reference,
+                    q.status,
+                    q.account_found,
+                    q.bank_available,
+                    q.eligible_for_transfer,
+                    q.error_code,
+                    q.error_message,
+                    q.created_at,
+                    q.updated_at
+                FROM inquiries q
+                WHERE q.inquiry_ref = ?
+                LIMIT 1
+                """,
+                rs -> {
+                    if (!rs.next()) {
+                        return null;
+                    }
+
+                    return mapJsonInquiry(rs, transferRef);
+                },
+                inquiryRef.trim()
+        );
+    }
+
+    private OperationsTransferTraceInquiryResponse mapIsoInquiry(ResultSet rs)
             throws java.sql.SQLException {
         String inquiryRef = clean(rs.getString("inquiry_ref"));
         String usedByTransferRef = clean(rs.getString("used_by_transfer_ref"));
@@ -292,6 +364,40 @@ public class OperationsTransferTraceService {
                 toLocalDateTime(rs.getTimestamp("updated_at")),
                 "/api/iso-inquiries/" + inquiryRef,
                 "/api/operations/iso-inquiries/" + inquiryRef
+        );
+    }
+
+    private OperationsTransferTraceInquiryResponse mapJsonInquiry(ResultSet rs, String transferRef)
+            throws java.sql.SQLException {
+        String inquiryRef = clean(rs.getString("inquiry_ref"));
+
+        return new OperationsTransferTraceInquiryResponse(
+                rs.getLong("id"),
+                inquiryRef,
+                clean(rs.getString("channel_id")),
+                null,   // messageId      — ISO-only
+                null,   // instructionId  — ISO-only
+                null,   // endToEndId     — ISO-only
+                clean(rs.getString("source_bank")),
+                clean(rs.getString("destination_bank")),
+                null,   // debtorAccount  — ISO-only
+                clean(rs.getString("creditor_account")),
+                rs.getBigDecimal("amount"),
+                clean(rs.getString("currency")),
+                clean(rs.getString("reference")),
+                clean(rs.getString("status")),
+                rs.getBoolean("account_found"),
+                rs.getBoolean("bank_available"),
+                rs.getBoolean("eligible_for_transfer"),
+                clean(rs.getString("error_code")),
+                clean(rs.getString("error_message")),
+                null,   // expiresAt — JSON inquiries don't expire
+                false,  // expired
+                clean(transferRef),   // usedByTransferRef inferred from context
+                toLocalDateTime(rs.getTimestamp("created_at")),
+                toLocalDateTime(rs.getTimestamp("updated_at")),
+                "/api/inquiries/" + inquiryRef,
+                "/api/operations/inquiries/" + inquiryRef
         );
     }
 
@@ -368,7 +474,7 @@ public class OperationsTransferTraceService {
                     error_message,
                     created_at
                 FROM iso_messages
-                WHERE """
+                WHERE\s"""
                 + String.join(" OR ", conditions)
                 + """
 
@@ -438,7 +544,7 @@ public class OperationsTransferTraceService {
                     payload,
                     created_at
                 FROM audit_logs
-                WHERE """
+                WHERE\s"""
                 + String.join(" OR ", conditions)
                 + """
 
@@ -470,15 +576,21 @@ public class OperationsTransferTraceService {
         List<OperationsTransferTraceTimelineItemResponse> timeline = new ArrayList<>();
 
         if (inquiry != null) {
+            // Distinguish ISO path (has messageId) vs JSON path (no messageId)
+            boolean isIsoInquiry = StringUtils.hasText(inquiry.messageId());
+            String inquiryEventCategory = isIsoInquiry ? "ISO_INQUIRY" : "JSON_INQUIRY";
+            String inquiryCreatedLabel  = isIsoInquiry ? "ISO inquiry created (ACMT.023)" : "JSON inquiry created";
+            String inquiryProtocol      = isIsoInquiry ? "ACMT_023" : "JSON_API";
+
             timeline.add(new OperationsTransferTraceTimelineItemResponse(
                     inquiry.createdAt(),
-                    "ISO_INQUIRY",
-                    "ISO_INQUIRY_CREATED",
+                    inquiryEventCategory,
+                    inquiryEventCategory + "_CREATED",
                     inquiry.status(),
-                    "ACMT_023",
+                    inquiryProtocol,
                     "INBOUND",
                     inquiry.inquiryRef(),
-                    "ISO inquiry created",
+                    inquiryCreatedLabel,
                     "Inquiry status=" + inquiry.status()
                             + ", creditorAccount=" + inquiry.creditorAccount()
             ));
@@ -486,10 +598,10 @@ public class OperationsTransferTraceService {
             if (StringUtils.hasText(inquiry.usedByTransferRef())) {
                 timeline.add(new OperationsTransferTraceTimelineItemResponse(
                         inquiry.updatedAt(),
-                        "ISO_INQUIRY",
-                        "ISO_INQUIRY_USED_BY_TRANSFER",
+                        inquiryEventCategory,
+                        inquiryEventCategory + "_USED_BY_TRANSFER",
                         inquiry.status(),
-                        "PACS_008",
+                        isIsoInquiry ? "PACS_008" : "JSON_API",
                         "INBOUND",
                         inquiry.usedByTransferRef(),
                         "Inquiry used by transfer",

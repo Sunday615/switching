@@ -1,5 +1,7 @@
 package com.example.switching.operations.service;
 
+import com.example.switching.AbstractIntegrationTest;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -12,9 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -23,9 +23,7 @@ import org.springframework.web.context.WebApplicationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-@SpringBootTest
-@ActiveProfiles("test")
-class OperationsIsoInquiryQueryIntegrationTest {
+class OperationsIsoInquiryQueryIntegrationTest extends AbstractIntegrationTest {
 
     private static final AtomicInteger SUFFIX_SEQUENCE = new AtomicInteger(6000);
 

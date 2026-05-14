@@ -199,6 +199,15 @@ public enum ErrorCatalog {
                         ErrorPhase.DISPATCH_TRANSFER,
                         false,
                         "Outbox event cannot be manually retried"),
+        OUT_005(
+                        HttpStatus.NOT_FOUND,
+                        "NOT_FOUND",
+                        "OUT-005",
+                        ErrorCategory.CORE,
+                        ErrorLayer.OUTBOX,
+                        ErrorPhase.DISPATCH_TRANSFER,
+                        false,
+                        "Outbox event not found"),
         ISO_001(
                         HttpStatus.NOT_FOUND,
                         "NOT_FOUND",

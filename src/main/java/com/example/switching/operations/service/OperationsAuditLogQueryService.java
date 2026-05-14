@@ -80,7 +80,6 @@ public class OperationsAuditLogQueryService {
                     a.reference_type,
                     a.reference_id,
                     a.actor,
-                    a.channel_id,
                     a.created_at,
                 """
                 + payloadSelect
@@ -189,7 +188,7 @@ public class OperationsAuditLogQueryService {
                 rs.getString("reference_type"),
                 rs.getString("reference_id"),
                 rs.getString("actor"),
-                rs.getString("channel_id"),
+                null,   // channelId — audit_logs table has no channel_id column
                 toLocalDateTime(rs.getTimestamp("created_at")),
                 rs.getString("payload")
         );

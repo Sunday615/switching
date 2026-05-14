@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,6 +16,9 @@ import com.example.switching.outbox.enums.OutboxStatus;
 public interface OutboxEventRepository extends JpaRepository<OutboxEventEntity, Long> {
 
         List<OutboxEventEntity> findTop20ByStatusOrderByIdAsc(OutboxStatus status);
+
+        @Query("select e from OutboxEventEntity e where e.status = :status order by e.id asc")
+        List<OutboxEventEntity> findPendingBatch(@org.springframework.data.repository.query.Param("status") OutboxStatus status, Pageable pageable);
 
         List<OutboxEventEntity> findAllByTransferRefOrderByIdAsc(String transferRef);
         List<OutboxEventEntity> findByTransferRefOrderByCreatedAtAsc(String transferRef);

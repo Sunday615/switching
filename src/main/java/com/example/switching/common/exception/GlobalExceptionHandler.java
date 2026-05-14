@@ -17,6 +17,8 @@ import com.example.switching.common.filter.RequestIdFilter;
 import com.example.switching.connector.exception.ConnectorConfigAlreadyExistsException;
 import com.example.switching.connector.exception.ConnectorConfigNotFoundException;
 import com.example.switching.idempotency.exception.IdempotencyConflictException;
+import com.example.switching.outbox.exception.OutboxEventNotFoundException;
+import com.example.switching.outbox.exception.OutboxManualRetryNotAllowedException;
 import com.example.switching.inquiry.exception.InquiryNotFoundException;
 import com.example.switching.iso.exception.IsoMessageCryptoException;
 import com.example.switching.iso.exception.IsoMessageInvalidStateException;
@@ -303,6 +305,30 @@ public class GlobalExceptionHandler {
 
                 return buildResponse(
                                 ErrorCatalog.ISO_003,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(OutboxEventNotFoundException.class)
+        public ResponseEntity<ApiErrorResponse> handleOutboxEventNotFound(
+                        OutboxEventNotFoundException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.OUT_005,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(OutboxManualRetryNotAllowedException.class)
+        public ResponseEntity<ApiErrorResponse> handleOutboxManualRetryNotAllowed(
+                        OutboxManualRetryNotAllowedException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.OUT_004,
                                 ex.getMessage(),
                                 request,
                                 null);

@@ -1,8 +1,11 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
+
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:REMOVED}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -19,7 +22,7 @@ spring:
     locations: classpath:db/migration
     url: ${DB_URL:jdbc:mysql://localhost:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true}
     user: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:REMOVED}
+    password: ${DB_PASSWORD}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -33,12 +36,21 @@ management:
 switching:
   payment:
     json-initiation:
-      enabled: false
+      enabled: ${JSON_INITIATION_ENABLED:false}
   mock-bank:
     pacs002:
       force-reject: ${MOCK_BANK_FORCE_REJECT:false}
-
-
-
   security:
     message-crypto-key-base64: ${MESSAGE_CRYPTO_KEY_BASE64:}
+    api-key:
+      enabled: ${API_KEY_AUTH_ENABLED:true}
+    rate-limit:
+      enabled: ${RATE_LIMIT_ENABLED:true}
+      requests-per-minute: ${RATE_LIMIT_RPM:100}
+  outbox:
+    worker:
+      poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:30000}
+      recovery-interval-ms: ${OUTBOX_RECOVERY_INTERVAL_MS:60000}
+      batch-size: ${OUTBOX_BATCH_SIZE:20}
+      max-retry: ${OUTBOX_MAX_RETRY:3}
+      stuck-timeout-minutes: ${OUTBOX_STUCK_TIMEOUT_MINUTES:2}

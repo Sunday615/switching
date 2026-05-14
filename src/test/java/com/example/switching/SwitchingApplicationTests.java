@@ -1,12 +1,10 @@
 package com.example.switching;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
+import com.example.switching.AbstractIntegrationTest;
 
-@SpringBootTest
-@ActiveProfiles("test")
-class SwitchingApplicationTests {
+import org.junit.jupiter.api.Test;
+
+class SwitchingApplicationTests extends AbstractIntegrationTest {
 
 	@Test
 	void contextLoads() {

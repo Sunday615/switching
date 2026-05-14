@@ -1,0 +1,162 @@
+name: CI
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+
+  # ── Job 1: Compile ────────────────────────────────────────────────────────────
+  compile:
+    name: Compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Compile
+        run: ./mvnw -q compile -DskipTests
+
+  # ── Job 2: Unit Tests ─────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: compile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run unit tests
+        run: |
+          ./mvnw test \
+            -Dtest="ParticipantManagementServiceTest,RoutingRuleManagementServiceTest,ConnectorConfigManagementServiceTest" \
+            -Dsurefire.failIfNoSpecifiedTests=false
+
+      - name: Upload unit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: target/surefire-reports/
+
+  # ── Job 3: Integration Tests (Testcontainers) ─────────────────────────────────
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: compile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run integration tests
+        run: |
+          ./mvnw test \
+            -Dtest="SwitchingApplicationTests,FullTransferFlowIntegrationTest,IsoInquiryFlowIntegrationTest,IsoInquiryValidationIntegrationTest,IsoInquiryExpiryIntegrationTest,OperationsTransferTraceIntegrationTest,OperationsTransferQueryIntegrationTest,OperationsIsoInquiryQueryIntegrationTest" \
+            -Dsurefire.failIfNoSpecifiedTests=false
+        env:
+          # Testcontainers starts its own MySQL — no env vars needed for DB
+          MESSAGE_CRYPTO_KEY_BASE64: NImwCmFwkSIeDgy8UJtzGq86A389puEEe6gi2Wdo9MM=
+          SPRING_PROFILES_ACTIVE: test
+
+      - name: Upload integration test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-report
+          path: target/surefire-reports/
+
+  # ── Job 4: Package ────────────────────────────────────────────────────────────
+  package:
+    name: Package JAR
+    runs-on: ubuntu-latest
+    needs: [ unit-tests, integration-tests ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Package
+        run: ./mvnw -q package -DskipTests
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: target/*.jar
+          retention-days: 7
+
+  # ── Job 5: Docker Build ───────────────────────────────────────────────────────
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: package
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: target/
+
+      - name: Build Docker image
+        run: docker build -t switching-api:${{ github.sha }} .
+
+      - name: Save image digest
+        run: docker images switching-api:${{ github.sha }}
+
+  # ── Job 6: Push to Registry (main branch only) ────────────────────────────────
+  docker-push:
+    name: Push to Registry
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: target/
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/switching-api:latest
+            ghcr.io/${{ github.repository }}/switching-api:${{ github.sha }}

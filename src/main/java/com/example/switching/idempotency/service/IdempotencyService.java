@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 import com.example.switching.idempotency.entity.IdempotencyRecordEntity;
+import com.example.switching.idempotency.exception.IdempotencyConflictException;
 import com.example.switching.idempotency.repository.IdempotencyRecordRepository;
 import com.example.switching.transfer.entity.TransferEntity;
 import com.example.switching.transfer.repository.TransferRepository;
@@ -39,7 +40,7 @@ public class IdempotencyService {
         IdempotencyRecordEntity record = recordOptional.get();
 
         if (record.getRequestHash() != null && !record.getRequestHash().equals(requestHash)) {
-            throw new IllegalStateException(
+            throw new IdempotencyConflictException(
                     "Idempotency key already used with different payload: " + idempotencyKey
             );
         }

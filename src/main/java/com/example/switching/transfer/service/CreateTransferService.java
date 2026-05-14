@@ -5,10 +5,16 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 
 import com.example.switching.audit.service.AuditLogService;
 import com.example.switching.common.util.RequestHashUtil;
@@ -38,6 +44,7 @@ import com.example.switching.transfer.repository.TransferStatusHistoryRepository
 @Service
 public class CreateTransferService {
 
+    private static final Logger log = LoggerFactory.getLogger(CreateTransferService.class);
     private static final String CHANNEL_ID = "API";
 
     private final TransferRefGenerator transferRefGenerator;
@@ -50,6 +57,8 @@ public class CreateTransferService {
     private final IsoMessageService isoMessageService;
     private final ParticipantService participantService;
     private final RoutingService routingService;
+    private final Counter transferCreatedCounter;
+    private final Counter transferFailedCounter;
 
     public CreateTransferService(
             TransferRefGenerator transferRefGenerator,
@@ -61,7 +70,8 @@ public class CreateTransferService {
             AuditLogService auditLogService,
             IsoMessageService isoMessageService,
             ParticipantService participantService,
-            RoutingService routingService) {
+            RoutingService routingService,
+            MeterRegistry meterRegistry) {
         this.transferRefGenerator = transferRefGenerator;
         this.transferRepository = transferRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
@@ -72,6 +82,12 @@ public class CreateTransferService {
         this.isoMessageService = isoMessageService;
         this.participantService = participantService;
         this.routingService = routingService;
+        this.transferCreatedCounter = Counter.builder("payment.transfer.created")
+                .description("Number of transfers accepted and queued for dispatch")
+                .register(meterRegistry);
+        this.transferFailedCounter = Counter.builder("payment.transfer.failed")
+                .description("Number of transfers that failed during creation")
+                .register(meterRegistry);
     }
 
     @Transactional
@@ -89,6 +105,7 @@ public class CreateTransferService {
         try {
             String resolvedInquiryRef = requireInquiryRef(request.getInquiryRef());
             inquiryRef = resolvedInquiryRef;
+            MDC.put("inquiryRef", inquiryRef);
 
             String requestHash = RequestHashUtil.sha256(request);
             String incomingIdempotencyKey = normalize(request.getIdempotencyKey());
@@ -178,6 +195,7 @@ public class CreateTransferService {
                     validatedPayload);
 
             transferRef = transferRefGenerator.generate();
+            MDC.put("transferRef", transferRef);
             LocalDateTime now = LocalDateTime.now();
 
             String clientTransferId = StringUtils.hasText(incomingIdempotencyKey)
@@ -310,12 +328,16 @@ public class CreateTransferService {
                     CHANNEL_ID,
                     queuedPayload);
 
+            transferCreatedCounter.increment();
+            log.info("Transfer accepted: transferRef={} inquiryRef={}", transferRef, inquiryRef);
             return new CreateTransferResponse(
                     transferRef,
                     TransferStatus.RECEIVED.name(),
                     "Transfer request accepted and queued for dispatch");
 
         } catch (Exception ex) {
+            transferFailedCounter.increment();
+            log.error("Transfer creation failed: inquiryRef={}", inquiryRef, ex);
             auditLogService.logError(
                     "TRANSFER_FAILED",
                     "TRANSFER",
@@ -323,6 +345,9 @@ public class CreateTransferService {
                     CHANNEL_ID,
                     ex);
             throw ex;
+        } finally {
+            MDC.remove("transferRef");
+            MDC.remove("inquiryRef");
         }
     }
 

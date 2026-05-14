@@ -6,6 +6,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -28,6 +29,10 @@ import com.example.switching.transfer.repository.TransferRepository;
 import com.example.switching.transfer.repository.TransferStatusHistoryRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+
 @Service
 public class OutboxProcessorService {
 
@@ -37,7 +42,8 @@ public class OutboxProcessorService {
     private static final String SOURCE_SYSTEM = "WORKER";
     private static final String IDEMPOTENCY_CHANNEL = "API";
     private static final int MAX_ERROR_MESSAGE_LENGTH = 500;
-    private static final int MAX_RETRY = 3;
+
+    private final int maxRetry;
 
     private final OutboxEventRepository outboxEventRepository;
     private final TransferRepository transferRepository;
@@ -49,6 +55,10 @@ public class OutboxProcessorService {
     private final IdempotencyService idempotencyService;
     private final ErrorClassifier errorClassifier;
     private final TransactionTemplate transactionTemplate;
+    private final Counter dispatchSuccessCounter;
+    private final Counter dispatchBusinessFailureCounter;
+    private final Counter dispatchTechnicalFailureCounter;
+    private final Timer dispatchTimer;
 
     public OutboxProcessorService(OutboxEventRepository outboxEventRepository,
             TransferRepository transferRepository,
@@ -58,7 +68,9 @@ public class OutboxProcessorService {
             AuditLogService auditLogService,
             IdempotencyService idempotencyService,
             ErrorClassifier errorClassifier,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            MeterRegistry meterRegistry,
+            @org.springframework.beans.factory.annotation.Value("${switching.outbox.worker.max-retry:3}") int maxRetry) {
         this.outboxEventRepository = outboxEventRepository;
         this.transferRepository = transferRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
@@ -67,11 +79,38 @@ public class OutboxProcessorService {
         this.auditLogService = auditLogService;
         this.idempotencyService = idempotencyService;
         this.errorClassifier = errorClassifier;
+        this.maxRetry = maxRetry;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.dispatchSuccessCounter = Counter.builder("payment.outbox.dispatch.success")
+                .description("Outbox events dispatched successfully")
+                .register(meterRegistry);
+        this.dispatchBusinessFailureCounter = Counter.builder("payment.outbox.dispatch.failed")
+                .tag("type", "business")
+                .description("Outbox events rejected by downstream bank")
+                .register(meterRegistry);
+        this.dispatchTechnicalFailureCounter = Counter.builder("payment.outbox.dispatch.failed")
+                .tag("type", "technical")
+                .description("Outbox events failed due to technical errors (terminal)")
+                .register(meterRegistry);
+        this.dispatchTimer = Timer.builder("payment.outbox.dispatch.duration")
+                .description("Time taken to process a single outbox event")
+                .register(meterRegistry);
     }
 
     public void processSingleEvent(Long outboxEventId) {
+        MDC.put("outboxEventId", String.valueOf(outboxEventId));
+        Timer.Sample timerSample = Timer.start();
+        try {
+            doProcessSingleEvent(outboxEventId);
+        } finally {
+            timerSample.stop(dispatchTimer);
+            MDC.remove("outboxEventId");
+            MDC.remove("transferRef");
+        }
+    }
+
+    private void doProcessSingleEvent(Long outboxEventId) {
         OutboxEventEntity claimedEvent = transactionTemplate.execute(status -> claimEvent(outboxEventId));
 
         if (claimedEvent == null) {
@@ -83,6 +122,8 @@ public class OutboxProcessorService {
 
         try {
             command = objectMapper.readValue(claimedEvent.getPayload(), DispatchTransferCommand.class);
+            MDC.put("transferRef", command.getTransferRef());
+
             Map<String, Object> isoDispatchPayload = new LinkedHashMap<>();
             isoDispatchPayload.put("outboxEventId", claimedEvent.getId());
             isoDispatchPayload.put("transferRef", command.getTransferRef());
@@ -199,6 +240,7 @@ public class OutboxProcessorService {
                 SOURCE_SYSTEM,
                 payload);
 
+        dispatchSuccessCounter.increment();
         log.info("Outbox dispatch success: outboxEventId={} transferRef={}",
                 event.getId(), transfer.getTransferRef());
     }
@@ -245,6 +287,7 @@ public class OutboxProcessorService {
                 SOURCE_SYSTEM,
                 payload);
 
+        dispatchBusinessFailureCounter.increment();
         log.warn("Outbox dispatch downstream failure: outboxEventId={} transferRef={} errorCode={}",
                 event.getId(), transfer.getTransferRef(), catalog.getErrorCode());
     }
@@ -256,7 +299,7 @@ public class OutboxProcessorService {
         OutboxEventEntity event = getOutboxEventOrThrow(outboxEventId);
 
         int nextRetryCount = safeRetryCount(event.getRetryCount()) + 1;
-        boolean shouldRetry = catalog.isRetryable() && nextRetryCount < MAX_RETRY;
+        boolean shouldRetry = catalog.isRetryable() && nextRetryCount < maxRetry;
 
         TransferEntity transfer = null;
         if (StringUtils.hasText(transferRef)) {
@@ -297,7 +340,7 @@ public class OutboxProcessorService {
                 StringUtils.hasText(transferRef) ? transferRef : event.getTransferRef(),
                 ex.getMessage());
         payload.put("attemptNo", nextRetryCount);
-        payload.put("maxRetry", MAX_RETRY);
+        payload.put("maxRetry", maxRetry);
         payload.put("willRetry", shouldRetry);
 
         auditLogService.log(
@@ -309,8 +352,9 @@ public class OutboxProcessorService {
 
         if (shouldRetry) {
             log.warn("Outbox dispatch retry scheduled: outboxEventId={} transferRef={} errorCode={} attempt={}/{}",
-                    event.getId(), transferRef, catalog.getErrorCode(), nextRetryCount, MAX_RETRY);
+                    event.getId(), transferRef, catalog.getErrorCode(), nextRetryCount, maxRetry);
         } else {
+            dispatchTechnicalFailureCounter.increment();
             log.error("Outbox dispatch terminal failure: outboxEventId={} transferRef={} errorCode={}",
                     event.getId(), transferRef, catalog.getErrorCode(), ex);
         }

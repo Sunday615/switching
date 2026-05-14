@@ -91,6 +91,19 @@ public class IsoMessageCryptoService {
             );
         }
 
+        // DEV_FALLBACK_KEY is only allowed when Spring test profile is active.
+        // In production, MESSAGE_CRYPTO_KEY_BASE64 must be set explicitly.
+        String activeProfiles = System.getProperty("spring.profiles.active", "");
+        boolean isTestProfile = activeProfiles.contains("test")
+                || "test".equals(System.getenv("SPRING_PROFILES_ACTIVE"));
+
+        if (!isTestProfile) {
+            throw new IllegalStateException(
+                    "switching.security.message-crypto-key-base64 must be set. "
+                    + "Running without a crypto key is not allowed outside of the test profile."
+            );
+        }
+
         return DEV_FALLBACK_KEY.getBytes(StandardCharsets.UTF_8);
     }
 }

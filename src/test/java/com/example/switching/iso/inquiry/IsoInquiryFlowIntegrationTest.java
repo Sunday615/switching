@@ -1,5 +1,7 @@
 package com.example.switching.iso.inquiry;
 
+import com.example.switching.AbstractIntegrationTest;
+
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -17,10 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -34,9 +34,7 @@ import com.example.switching.outbox.service.OutboxProcessorService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-@SpringBootTest
-@ActiveProfiles("test")
-class IsoInquiryFlowIntegrationTest {
+class IsoInquiryFlowIntegrationTest extends AbstractIntegrationTest {
 
     private static final String BASE_CHANNEL_ID = "ISO20022_XML";
     private static final String SOURCE_BANK = "BANK_A";

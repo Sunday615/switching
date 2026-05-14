@@ -28,7 +28,8 @@ public class OutboxRecoveryService {
     private static final String IDEMPOTENCY_CHANNEL = "API";
 
     private static final int DEFAULT_LIMIT = 50;
-    private static final int MAX_RETRY = 3;
+
+    private final int maxRetry;
 
     private static final String ERROR_CODE = "OUT-003";
     private static final String ERROR_MESSAGE = "Outbox event stuck in PROCESSING and reached retry limit";
@@ -43,12 +44,14 @@ public class OutboxRecoveryService {
                                  TransferRepository transferRepository,
                                  TransferStatusHistoryRepository transferStatusHistoryRepository,
                                  IdempotencyService idempotencyService,
-                                 AuditLogService auditLogService) {
+                                 AuditLogService auditLogService,
+                                 @org.springframework.beans.factory.annotation.Value("${switching.outbox.worker.max-retry:3}") int maxRetry) {
         this.outboxEventRepository = outboxEventRepository;
         this.transferRepository = transferRepository;
         this.transferStatusHistoryRepository = transferStatusHistoryRepository;
         this.idempotencyService = idempotencyService;
         this.auditLogService = auditLogService;
+        this.maxRetry = maxRetry;
     }
 
     @Transactional
@@ -68,7 +71,7 @@ public class OutboxRecoveryService {
             int currentRetryCount = safeRetryCount(event.getRetryCount());
             int nextRetryCount = currentRetryCount + 1;
 
-            if (nextRetryCount >= MAX_RETRY) {
+            if (nextRetryCount >= maxRetry) {
                 boolean markedFailed = markAsTerminalFailed(event, stuckAfterMinutes, nextRetryCount);
                 if (markedFailed) {
                     handledCount++;
@@ -156,7 +159,7 @@ public class OutboxRecoveryService {
         Map<String, Object> payload = basePayload(event, stuckAfterMinutes, nextRetryCount);
         payload.put("fromStatus", OutboxStatus.PROCESSING.name());
         payload.put("toStatus", OutboxStatus.FAILED.name());
-        payload.put("reason", "PROCESSING_STUCK_MAX_RETRY_EXCEEDED");
+        payload.put("reason", "PROCESSING_STUCK_maxRetry_EXCEEDED");
         payload.put("willRetry", false);
         payload.put("finalTransferStatus", TransferStatus.FAILED.name());
 
@@ -180,7 +183,7 @@ public class OutboxRecoveryService {
         payload.put("messageType", event.getMessageType());
         payload.put("stuckAfterMinutes", stuckAfterMinutes);
         payload.put("attemptNo", nextRetryCount);
-        payload.put("maxRetry", MAX_RETRY);
+        payload.put("maxRetry", maxRetry);
         payload.put("errorCode", ERROR_CODE);
         payload.put("category", "CORE");
         payload.put("layer", "OUTBOX");

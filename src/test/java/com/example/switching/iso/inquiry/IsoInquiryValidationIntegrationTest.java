@@ -1,5 +1,7 @@
 package com.example.switching.iso.inquiry;
 
+import com.example.switching.AbstractIntegrationTest;
+
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -17,10 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -29,9 +29,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import org.w3c.dom.Document;
 
-@SpringBootTest
-@ActiveProfiles("test")
-class IsoInquiryValidationIntegrationTest {
+class IsoInquiryValidationIntegrationTest extends AbstractIntegrationTest {
 
     private static final String SOURCE_BANK = "BANK_A";
     private static final String DESTINATION_BANK = "BANK_B";

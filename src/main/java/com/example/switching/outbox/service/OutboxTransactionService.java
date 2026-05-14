@@ -2,12 +2,14 @@ package com.example.switching.outbox.service;
 
 import java.time.LocalDateTime;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.switching.outbox.dto.DispatchTransferCommand;
 import com.example.switching.outbox.entity.OutboxEventEntity;
 import com.example.switching.outbox.enums.OutboxStatus;
+import com.example.switching.outbox.event.OutboxCreatedEvent;
 import com.example.switching.outbox.repository.OutboxEventRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,11 +21,14 @@ public class OutboxTransactionService {
 
     private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public OutboxTransactionService(OutboxEventRepository outboxEventRepository,
-                                    ObjectMapper objectMapper) {
+                                    ObjectMapper objectMapper,
+                                    ApplicationEventPublisher eventPublisher) {
         this.outboxEventRepository = outboxEventRepository;
         this.objectMapper = objectMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -40,7 +45,11 @@ public class OutboxTransactionService {
             event.setRetryCount(0);
             event.setCreatedAt(now);
 
-            outboxEventRepository.save(event);
+            OutboxEventEntity saved = outboxEventRepository.save(event);
+
+            // Publish after save — Spring fires this AFTER the outer transaction commits
+            // (TransactionalEventListener on the worker listens for AFTER_COMMIT)
+            eventPublisher.publishEvent(new OutboxCreatedEvent(saved.getId(), command.getTransferRef()));
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("Failed to serialize dispatch command", ex);
         }
