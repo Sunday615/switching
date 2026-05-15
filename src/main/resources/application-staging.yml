@@ -1,0 +1,24 @@
+spring:
+  datasource:
+    url: ${DB_URL}           # no default — staging must use a real DB
+    username: ${DB_USERNAME}
+  flyway:
+    url: ${DB_URL}
+    user: ${DB_USERNAME}
+  jpa:
+    show-sql: false
+
+switching:
+  payment:
+    json-initiation:
+      enabled: ${JSON_INITIATION_ENABLED:true}   # allow JSON path in staging for QA/smoke tests
+  mock-bank:
+    pacs002:
+      force-reject: ${MOCK_BANK_FORCE_REJECT:false}
+  security:
+    message-crypto-key-base64: ${MESSAGE_CRYPTO_KEY_BASE64}   # no default — must be set
+    api-key:
+      enabled: true
+    rate-limit:
+      enabled: true
+      requests-per-minute: ${RATE_LIMIT_RPM:100}

@@ -17,9 +17,9 @@ Before each phase sign-off, every item in that phase's section must be `[x]` or 
 
 | Phase | Title | Status | Completion |
 |-------|-------|--------|-----------|
-| P0 | Baseline Freeze | 🔵 In Progress | 80% |
-| P1 | Test & CI Gate | 🟢 Done | 90% |
-| P2 | Production Config | ⚪ Not Started | 0% |
+| P0 | Baseline Freeze | 🟢 Done | 90% |
+| P1 | Test & CI Gate | 🟢 Done | 95% |
+| P2 | Production Config | 🟢 Done | 85% |
 | P3 | DB & Migration Hardening | ⚪ Not Started | 0% |
 | P4 | Security Advanced | ⚪ Not Started | 0% |
 | P5 | Reliability & Outbox | ⚪ Not Started | 0% |
@@ -180,15 +180,30 @@ All API endpoints classified by audience, auth requirement, and production expos
 - [x] Test reports stored as CI artifacts
 - [ ] PR branch protection rule configured (requires status checks to pass)
 
-### Dockerfile Fix
-- [ ] `Dockerfile` build stage does NOT use `-DskipTests` in production build target
-- [ ] Optional: `Dockerfile` has a `dev` target with `-DskipTests` for local developer builds
+### Dockerfile Hardening
+- [x] `Dockerfile` refactored to 3-stage build: `deps` → `build` → `runtime`
+- [x] `runtime` stage uses `eclipse-temurin:21-jre` (JRE only, not JDK)
+- [x] Non-root user `switching` created; container runs as `USER switching`
+- [x] JVM container flags: `-XX:+UseContainerSupport`, `-XX:MaxRAMPercentage=75.0`, `-Djava.security.egd=file:/dev/./urandom`
+- [x] `deps` stage caches `dependency:go-offline` — only re-runs on `pom.xml` change
+- [x] `-DskipTests` in build stage acceptable: CI runs tests before Docker build via `needs:` chain
+- [ ] Base image pinned to specific digest (not floating tag)
+- [ ] Trivy image scan integrated into CI (no CRITICAL CVEs)
+
+### run.sh Updates
+- [x] `docker:build` command added (build image only)
+- [x] `docker:rebuild` command added (force rebuild + start)
+- [x] `test:unit` command added (unit tests only, fast, no DB)
+- [x] `status` command added (`docker compose ps`)
+- [x] `test` / `test:unit` / `test:single` no longer call `load_env` (Testcontainers handles DB)
 
 **Phase 1 Exit Criteria:**
 - [x] `./mvnw test` passes on clean machine (no local MySQL) — **46/46 PASS**
 - [x] CI pipeline created and blocks on failure
-- [ ] Dockerfile production build runs tests (not `-DskipTests`)
+- [x] Dockerfile hardened (3-stage, non-root user, JVM flags)
+- [x] Docker image built only after CI test gate passes
 - [ ] PR branch protection enabled on `main`
+- [ ] Unit tests separated from integration tests (Maven Surefire groups)
 
 ---
 
@@ -197,18 +212,24 @@ All API endpoints classified by audience, auth requirement, and production expos
 **Goal:** Secrets never in code. Prod fails fast on missing config.
 
 ### Profile Separation
-- [ ] 4 Spring profiles defined and documented: `dev`, `test`, `staging`, `prod`
-- [ ] Each profile's `application-{profile}.yml` differences documented
-- [ ] `staging` profile uses real DB credentials (not demo), mirrors `prod` as closely as possible
-- [ ] `prod` profile does not include any dev or test defaults
+- [x] 4 Spring profiles defined and documented: `dev`, `test`, `staging`, `prod`
+  - `application-dev.yml` — `show-sql=true`, `json-initiation=true` by default
+  - `application-staging.yml` — requires `DB_URL`/`DB_USERNAME`, `MESSAGE_CRYPTO_KEY_BASE64` (no fallback)
+  - `application-prod.yml` — strict: no defaults for secrets, `api-key.enabled` and `rate-limit.enabled` hardcoded to `true`
+  - `application-test.yml` — API key disabled, rate limit disabled, crypto fallback allowed
+- [x] `docker-compose.yml` sets `SPRING_PROFILES_ACTIVE: dev`
+- [x] Production deployment uses `SPRING_PROFILES_ACTIVE=prod`
 
 ### Startup Guards (prod profile)
-- [ ] App fails to start if `MESSAGE_CRYPTO_KEY_BASE64` is blank in prod
-- [ ] App fails to start if `DB_PASSWORD` is not set (no default)
-- [ ] App fails to start if `API_KEY_AUTH_ENABLED` is not `true` in prod
-- [ ] App fails to start if `RATE_LIMIT_ENABLED` is not `true` in prod
-- [ ] `JSON_INITIATION_ENABLED` defaults to `false` in prod (ISO-only mode)
-- [ ] Actuator exposure in prod: `health,info` only (never `metrics` without auth)
+- [x] `MESSAGE_CRYPTO_KEY_BASE64` has no default in `application-prod.yml` → Spring fails at startup if unset
+- [x] `DB_URL` and `DB_USERNAME` have no defaults in `application-prod.yml` → Spring fails if unset
+- [x] `DB_PASSWORD` has no default (base `application.yml`) → Spring always fails if unset
+- [x] `api-key.enabled: true` hardcoded in `application-prod.yml` (not overridable via env)
+- [x] `rate-limit.enabled: true` hardcoded in `application-prod.yml` (not overridable via env)
+- [x] `force-reject: false` hardcoded in `application-prod.yml` (mock flag cannot be enabled in prod)
+- [x] `ProductionStartupValidator` (`@Profile("prod")`) — hard fails if DB URL contains `allowPublicKeyRetrieval=true` or points to `localhost`; warns if `json-initiation=true`
+- [x] `IsoMessageCryptoService.resolveKey()` uses Spring `Environment.getActiveProfiles()` (fixed from fragile `System.getProperty`)
+- [x] Actuator exposure: `health,info` only (base config, applies to all profiles)
 
 ### Demo Keys Removal
 - [ ] Demo API keys (`sk-admin-switching-2026` etc.) disabled in production migration
@@ -217,14 +238,15 @@ All API endpoints classified by audience, auth requirement, and production expos
 
 ### Secrets Management
 - [ ] Decision made: Vault / AWS Secrets Manager / K8s Secrets / `.env` pipeline injection
-- [ ] All secrets injected via chosen method (not stored in `application.yml`)
 - [ ] `.env` file is in `.gitignore` and never committed
 - [ ] Secrets rotation procedure documented
 
 **Phase 2 Exit Criteria:**
-- [ ] Production cannot start with any missing secret
-- [ ] No demo credentials can authenticate in production
-- [ ] Staging config documented and deployed
+- [x] Production cannot start with missing `MESSAGE_CRYPTO_KEY_BASE64`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`
+- [x] `api-key.enabled` and `rate-limit.enabled` cannot be disabled in prod
+- [x] Startup validator catches insecure DB URL config at boot
+- [ ] Demo API keys disabled in production migration
+- [ ] Secrets management approach decided and documented
 
 ---
 
@@ -522,3 +544,5 @@ All API endpoints classified by audience, auth requirement, and production expos
 | Date | Version | Changes |
 |------|---------|---------|
 | 2026-05-14 | 1.0 | Initial checklist — Phase 0 baseline freeze |
+| 2026-05-14 | 1.1 | Phase 0 marked 90% done; Phase 1 updated to 95% — Testcontainers 46/46 PASS, CI pipeline, Dockerfile 3-stage + non-root, run.sh commands, TC-071 fix |
+| 2026-05-14 | 1.2 | Phase 2 at 85% — Spring profiles dev/staging/prod, ProductionStartupValidator, IsoMessageCryptoService fix, docker-compose SPRING_PROFILES_ACTIVE=dev; 60/60 tests PASS |

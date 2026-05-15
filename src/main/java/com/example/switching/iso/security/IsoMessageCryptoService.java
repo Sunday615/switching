@@ -10,6 +10,7 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -29,8 +30,9 @@ public class IsoMessageCryptoService {
     private final SecretKeySpec secretKeySpec;
 
     public IsoMessageCryptoService(
-            @Value("${switching.security.message-crypto-key-base64:}") String base64Key) {
-        this.secretKeySpec = new SecretKeySpec(resolveKey(base64Key), ALGORITHM);
+            @Value("${switching.security.message-crypto-key-base64:}") String base64Key,
+            Environment environment) {
+        this.secretKeySpec = new SecretKeySpec(resolveKey(base64Key, environment), ALGORITHM);
     }
 
     public String encrypt(String plainText) {
@@ -78,7 +80,7 @@ public class IsoMessageCryptoService {
         }
     }
 
-    private byte[] resolveKey(String base64Key) {
+    private byte[] resolveKey(String base64Key, Environment environment) {
         if (StringUtils.hasText(base64Key)) {
             byte[] decoded = Base64.getDecoder().decode(base64Key);
 
@@ -91,11 +93,7 @@ public class IsoMessageCryptoService {
             );
         }
 
-        // DEV_FALLBACK_KEY is only allowed when Spring test profile is active.
-        // In production, MESSAGE_CRYPTO_KEY_BASE64 must be set explicitly.
-        String activeProfiles = System.getProperty("spring.profiles.active", "");
-        boolean isTestProfile = activeProfiles.contains("test")
-                || "test".equals(System.getenv("SPRING_PROFILES_ACTIVE"));
+        boolean isTestProfile = java.util.Arrays.asList(environment.getActiveProfiles()).contains("test");
 
         if (!isTestProfile) {
             throw new IllegalStateException(

@@ -965,8 +965,10 @@ info "This may take 10-15 seconds..."
 
 RATE_LIMIT_HIT=0
 REQUESTS_SENT=0
+RATE_LIMIT_BODY=""
+RL_RESP_FILE=$(mktemp)
 for i in $(seq 1 120); do
-  CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/api/inquiries" \
+  CODE=$(curl -s -o "$RL_RESP_FILE" -w "%{http_code}" -X POST "$BASE_URL/api/inquiries" \
     -H "Content-Type: application/json" \
     -H "X-API-Key: $BANK_A_KEY" \
     -d "{\"sourceBank\":\"${BANK_A}\",\"destinationBank\":\"${BANK_B}\",\"creditorAccount\":\"${CREDITOR}\",\"amount\":${AMOUNT},\"currency\":\"${CURRENCY}\"}" \
@@ -974,9 +976,11 @@ for i in $(seq 1 120); do
   REQUESTS_SENT=$i
   if [ "$CODE" = "429" ]; then
     RATE_LIMIT_HIT=$i
+    RATE_LIMIT_BODY=$(cat "$RL_RESP_FILE" 2>/dev/null || echo "")
     break
   fi
 done
+rm -f "$RL_RESP_FILE"
 
 # TC-070
 if [ "$RATE_LIMIT_HIT" -gt 0 ]; then
@@ -985,17 +989,14 @@ else
   fail "TC-070" "Rate limit not triggered in ${REQUESTS_SENT} requests" "check RATE_LIMIT_ENABLED=true in config"
 fi
 
-# TC-071 — Check 429 response body has errorCode=REQ-004
+# TC-071 — verify saved 429 body has errorCode=REQ-004 (use saved body, not a new request)
 if [ "$RATE_LIMIT_HIT" -gt 0 ]; then
-  do_curl -X POST "$BASE_URL/api/inquiries" \
-    -H "Content-Type: application/json" \
-    -H "X-API-Key: $BANK_A_KEY" \
-    -d "{\"sourceBank\":\"${BANK_A}\",\"destinationBank\":\"${BANK_B}\",\"creditorAccount\":\"${CREDITOR}\",\"amount\":${AMOUNT},\"currency\":\"${CURRENCY}\"}"
-  ERR_CODE=$(jq_val ".errorCode")
+  ERR_CODE=$(echo "$RATE_LIMIT_BODY" | jq -r ".errorCode" 2>/dev/null || echo "")
   if [ "$ERR_CODE" = "REQ-004" ]; then
     pass "TC-071" "429 response body has errorCode=REQ-004 ✅"
   else
     fail "TC-071" "429 response body errorCode wrong" "expected REQ-004, got ${ERR_CODE}"
+    show_detail <<< "$RATE_LIMIT_BODY"
   fi
 else
   skip "TC-071" "429 body check — skipped (rate limit not triggered)"
