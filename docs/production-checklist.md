@@ -19,12 +19,12 @@ Before each phase sign-off, every item in that phase's section must be `[x]` or 
 |-------|-------|--------|-----------|
 | P0 | Baseline Freeze | 🟢 Done | 90% |
 | P1 | Test & CI Gate | 🟢 Done | 95% |
-| P2 | Production Config | 🟢 Done | 85% |
-| P3 | DB & Migration Hardening | ⚪ Not Started | 0% |
-| P4 | Security Advanced | ⚪ Not Started | 0% |
-| P5 | Reliability & Outbox | ⚪ Not Started | 0% |
-| P6 | Observability | ⚪ Not Started | 0% |
-| P7 | Deployment & Runtime | ⚪ Not Started | 0% |
+| P2 | Production Config | 🟢 Done | 95% |
+| P3 | DB & Migration Hardening | 🟡 In Progress | 65% |
+| P4 | Security Advanced | 🟡 In Progress | 45% |
+| P5 | Reliability & Outbox | 🟡 In Progress | 55% |
+| P6 | Observability | 🟡 In Progress | 30% |
+| P7 | Deployment & Runtime | 🟡 In Progress | 25% |
 | P8 | Compliance & Business | ⚪ Not Started | 0% |
 
 ---
@@ -160,7 +160,7 @@ All API endpoints classified by audience, auth requirement, and production expos
 - [x] `OperationsIsoInquiryQueryIntegrationTest` migrated
 - [x] `SwitchingApplicationTests` migrated
 - [x] `application-test.yml` uses `${TEST_DB_PASSWORD:}` default (overridden by DynamicPropertySource)
-- [x] `./mvnw test` passes from a clean checkout with no local MySQL — **46/46 PASS** ✅
+- [x] `./mvnw test` passes from a clean checkout with no local MySQL — **60/60 PASS** ✅
 
 ### Test Cleanup
 - [ ] `@AfterEach` cleanup added to all integration tests (prevent data accumulation)
@@ -198,7 +198,7 @@ All API endpoints classified by audience, auth requirement, and production expos
 - [x] `test` / `test:unit` / `test:single` no longer call `load_env` (Testcontainers handles DB)
 
 **Phase 1 Exit Criteria:**
-- [x] `./mvnw test` passes on clean machine (no local MySQL) — **46/46 PASS**
+- [x] `./mvnw test` passes on clean machine (no local MySQL) — **60/60 PASS**
 - [x] CI pipeline created and blocks on failure
 - [x] Dockerfile hardened (3-stage, non-root user, JVM flags)
 - [x] Docker image built only after CI test gate passes
@@ -232,13 +232,13 @@ All API endpoints classified by audience, auth requirement, and production expos
 - [x] Actuator exposure: `health,info` only (base config, applies to all profiles)
 
 ### Demo Keys Removal
-- [ ] Demo API keys (`sk-admin-switching-2026` etc.) disabled in production migration
-- [ ] Production key provisioning procedure documented (how to create first ADMIN key)
-- [ ] No hardcoded credentials anywhere in `src/` (git grep for `sk-admin`, `sk-ops`, `sk-bank`)
+- [x] Demo API keys disabled in production — `ProductionDemoKeyDisableService` (`@Profile("prod")` `ApplicationRunner`) disables all demo keys by name+prefix on prod startup; warn log tells ops to provision a real ADMIN key
+- [x] Production key provisioning procedure: on first prod deploy, `ProductionDemoKeyDisableService` auto-disables demo keys → ops must `POST /api/admin/api-keys` with an ADMIN key to create first real key (bootstrap: temporarily use root DB to insert one manually, or use the key before startup disables it)
+- [x] No hardcoded credentials in `src/` — demo keys only appear in V14 migration (seed data, expected); `ApiKeyEntity.java` has only a doc comment example
 
 ### Secrets Management
 - [ ] Decision made: Vault / AWS Secrets Manager / K8s Secrets / `.env` pipeline injection
-- [ ] `.env` file is in `.gitignore` and never committed
+- [x] `.env` file is in `.gitignore` and never committed
 - [ ] Secrets rotation procedure documented
 
 **Phase 2 Exit Criteria:**
@@ -255,11 +255,12 @@ All API endpoints classified by audience, auth requirement, and production expos
 **Goal:** Fresh install predictable. DB user least-privilege. Backups working.
 
 ### DB User
-- [ ] `switching_app` DB user created with SELECT/INSERT/UPDATE/DELETE only
-- [ ] `switching_flyway` DB user created for migrations (ADMIN scope, migration-time only)
-- [ ] Docker Compose and `application.yml` updated to use `switching_app` credentials
-- [ ] MySQL root password rotated after migration user setup
-- [ ] Connection tested: `switching_app` cannot DROP TABLE
+- [x] `switching_app` DB user SQL defined — `scripts/init-db-users.sh` GRANT SELECT/INSERT/UPDATE/DELETE
+- [x] `switching_flyway` DB user SQL defined — same script, GRANT ALL for migrations
+- [x] Docker Compose updated — mounts `init-db-users.sh` into `mysql/docker-entrypoint-initdb.d`; app uses `switching_app`; Flyway uses `switching_flyway`
+- [x] `application.yml` updated — `FLYWAY_URL/USERNAME/PASSWORD` env vars with fallback to datasource creds (backwards compatible for local Maven run)
+- [ ] MySQL root password rotated after migration user setup (infrastructure task — do after first prod deploy)
+- [ ] Connection tested: `switching_app` cannot DROP TABLE (verify after first `docker compose up`)
 
 ### DB Connections
 - [ ] `useSSL=true` in prod JDBC URL
@@ -269,20 +270,23 @@ All API endpoints classified by audience, auth requirement, and production expos
 - [ ] Connection string does not include `allowPublicKeyRetrieval=true` in prod
 
 ### Migrations
-- [ ] All migrations V1–V14 confirmed as frozen (no edits to historical migrations)
-- [ ] V15 seed migration: `participants` BANK_A and BANK_B (production values)
-- [ ] V16 seed migration: `routing_rules` matching V15 participants
-- [ ] Migration for disabling demo API keys in prod (or: moved to `dev`-only migration)
-- [ ] V17 index migration (see RISK-DB-006)
+- [x] All migrations V1–V14 confirmed as frozen (no edits to historical migrations)
+- [x] V15 seed migration: `participants` BANK_A, BANK_B, BANK_C (with `ON DUPLICATE KEY UPDATE`)
+- [x] V15 seed migration: `routing_rules` for all 4 bidirectional BANK_A↔BANK_B/BANK_C routes (included in same V15)
+- [x] Demo key disable handled via `ProductionDemoKeyDisableService` (`@Profile("prod")` ApplicationRunner) — no migration needed
+- [x] V16 index migration: 6 performance indexes added (see Indexes section below)
+- [x] V17 API key hardening migration: `key_prefix` column, `expires_at` column, `key_value` converted to SHA-256 hex (64 chars)
+- [x] V18 maintenance migration: dropped duplicate `idx_outbox_events_status` index (created by both V1 and V16)
+- [x] V19 compensating migration: `UPDATE participants SET participant_type = 'DIRECT'` for old `BANK`/`SWITCHING` rows; `INDIRECT` for `SERVICE_PROVIDER` rows — fixes enum mismatch on existing local DBs
 - [ ] Flyway `validate` passes in all environments after migrations
 
-### Indexes (V17)
-- [ ] `transfers (status, created_at DESC)` index added
-- [ ] `outbox_events (status, next_retry_at)` index added
-- [ ] `outbox_events (status, updated_at)` index added
-- [ ] `audit_logs (reference_id, created_at)` index added
-- [ ] `iso_messages (transfer_ref, direction)` index added
-- [ ] `idempotency_records (expired_at)` index added
+### Indexes (V16)
+- [x] `transfers (status, created_at DESC)` index added
+- [x] `outbox_events (status, next_retry_at)` index added
+- [x] `outbox_events (status, updated_at)` index added
+- [x] `audit_logs (reference_id, created_at)` index added
+- [x] `iso_messages (transfer_ref, direction)` index added
+- [x] `idempotency_records (expired_at)` index added
 - [ ] Index migration tested with EXPLAIN on all affected queries
 
 ### Backup & Recovery
@@ -296,7 +300,7 @@ All API endpoints classified by audience, auth requirement, and production expos
 
 **Phase 3 Exit Criteria:**
 - [ ] App connects as `switching_app` (not root) in all environments
-- [ ] Fresh install from migrations + V15/V16 seeds has working participants and routes
+- [x] Fresh install from migrations + V15 seed has working participants and routes
 - [ ] DB backup and restore drill passed
 - [ ] All indexes confirmed with `EXPLAIN` on key queries
 
@@ -307,13 +311,18 @@ All API endpoints classified by audience, auth requirement, and production expos
 **Goal:** Bank/payment-grade authentication and data protection.
 
 ### API Key Security
-- [ ] `api_keys.key_value` stores hashed values (bcrypt or SHA-256)
-- [ ] `ApiKeyRepository.findByKeyValueAndEnabledTrue()` updated to hash-compare
-- [ ] Key is shown to user once (on creation) and never retrievable again
-- [ ] `expires_at` column added to `api_keys`
-- [ ] Key expiry enforced in `ApiKeyAuthFilter`
-- [ ] `POST /api/admin/api-keys/{id}/rotate` endpoint implemented
+- [x] `api_keys.key_value` stores SHA-256 hex digest (64 chars) — V17 migration converts existing plaintext keys via `SHA2(key_value, 256)`
+- [x] `ApiKeyAuthFilter` hashes incoming `X-API-Key` header with `ApiKeyHashUtil.hash()` before DB lookup
+- [x] Key is shown to user once (on creation/rotation via `ApiKeyService`) and never stored or retrievable again
+- [x] `expires_at` column added to `api_keys` in V17 migration
+- [x] Key expiry enforced in `ApiKeyAuthFilter` — keys past `expires_at` are rejected even if enabled
+- [x] `key_prefix` column added (first 12 chars of original key) for display/identification without exposing full key
+- [x] `GET /api/admin/api-keys` — list all keys (ADMIN only, no plaintext exposed)
+- [x] `POST /api/admin/api-keys` — create key, `plainKey` returned once in response (ADMIN only)
+- [x] `POST /api/admin/api-keys/{id}/disable` — disable key (ADMIN only)
+- [x] `POST /api/admin/api-keys/{id}/rotate` — rotate key, new `plainKey` returned once (ADMIN only)
 - [ ] Key rotation tested: old key stops working within 1 request after rotation
+- [ ] `/api/admin/api-keys/**` endpoints tested end-to-end with real ADMIN key
 
 ### Role Expansion
 - [ ] Production role list finalized (see roadmap for full list)
@@ -329,14 +338,15 @@ All API endpoints classified by audience, auth requirement, and production expos
 - [ ] Certificate `CN`/`SAN` validated against `X-Bank-Code` header
 
 ### XML Security
-- [ ] `Acmt023XmlParser` has XXE protection (`FEATURE_SECURE_PROCESSING`)
-- [ ] `Pacs008InboundParser` has XXE protection
-- [ ] XML body size limit configured (max 1MB): `spring.mvc.servlet.multipart.max-file-size`
+- [x] `Acmt023XmlParser` has XXE protection (`FEATURE_SECURE_PROCESSING`, `disallow-doctype-decl`, external entities disabled)
+- [x] `Pacs008InboundParser` has XXE protection (same flags as above)
+- [x] XML body size limit configured (1MB): `server.tomcat.max-http-form-post-size: 1MB` in `application.yml`
 - [ ] XXE penetration test performed and passed
 
 ### Data Masking
-- [ ] `MaskingUtil.maskAccount(String)` utility created (shows last 4 digits)
-- [ ] All `log.info/debug/error` calls with account numbers use masking
+- [x] `MaskingUtil.maskAccount(String)` utility created — `common/util/MaskingUtil.java`, shows last 4 digits (e.g. `1234567890` → `******7890`)
+- [x] `creditorAccount` masked in `CreateTransferService` audit log payloads (`TRANSFER_VALIDATE_REQUEST` + `TRANSFER_CREATED` events)
+- [ ] All remaining `log.info/debug/error` calls with account numbers use `MaskingUtil.maskAccount()` (debtorAccount, ISO parsers, OutboxProcessorService)
 - [ ] ISO XML payloads in logs have `<DbtrAcct>` and `<CdtrAcct>` masked
 - [ ] Audit log `payload` column masks account numbers at write time
 - [ ] Ops portal does not show full account numbers without elevated permission
@@ -359,15 +369,15 @@ All API endpoints classified by audience, auth requirement, and production expos
 - [ ] No duplicate `SUCCESS` event for same `transferRef` in any concurrent test scenario
 
 ### Retry & Backoff
-- [ ] `next_retry_at` populated consistently on each retry
-- [ ] Exponential backoff implemented: 30s → 2min → 10min
-- [ ] Outbox poller filters: `next_retry_at IS NULL OR next_retry_at <= NOW()`
+- [x] `next_retry_at` populated consistently on each retry (`OutboxProcessorService.finalizeTechnicalFailure`)
+- [x] Exponential backoff implemented: retry 1 → +30s, retry 2 → +2min, retry 3+ → +10min (`backoffDelay()`)
+- [x] Outbox poller filters: `next_retry_at IS NULL OR next_retry_at <= NOW()` (`OutboxEventRepository.findPendingBatch`)
 - [ ] Backoff tested: retried event is not re-processed until `next_retry_at`
 
 ### Audit Trail for Manual Actions
-- [ ] `OUTBOX_MANUAL_RETRY` audit log event written on every manual retry
-- [ ] `OUTBOX_MARK_REVIEWED` audit log event written on every mark-reviewed
-- [ ] Audit log includes: actor (from API key), outbox event ID, previous status, timestamp
+- [x] `OUTBOX_MANUAL_RETRY_REQUESTED` audit log event written on every manual retry (`OutboxManualRetryService`) — includes outboxEventId, transferRef, previousStatus, newStatus, retryCount, manualAction=true
+- [x] `OUTBOX_EVENT_MARKED_REVIEWED` audit log event written on every mark-reviewed (`OperationsOutboxMarkReviewedService`) — includes outboxEventId, transferRef, previousStatus, reason, reviewedBy, reviewedAt
+- [ ] Actor field populated from authenticated API key identity (currently hardcoded as `"API"` — needs SecurityContext lookup)
 
 ### Idempotency Tests
 - [ ] Concurrent POST `/api/transfers` with same idempotency key → exactly 1 transfer created
@@ -390,10 +400,10 @@ All API endpoints classified by audience, auth requirement, and production expos
 **Goal:** Incidents diagnosable in < 5 minutes from one transferRef.
 
 ### Metrics Export
-- [ ] `micrometer-registry-prometheus` dependency added
-- [ ] `/actuator/prometheus` endpoint exposed (internal only)
-- [ ] Prometheus configured to scrape app endpoint
-- [ ] All existing Micrometer metrics visible in Prometheus UI
+- [x] `micrometer-registry-prometheus` dependency added to `pom.xml`
+- [x] `/actuator/prometheus` endpoint exposed: staging → main port (8080); prod → management port (`${MANAGEMENT_PORT:9090}`, never public)
+- [ ] Prometheus server configured to scrape app endpoint (infrastructure task)
+- [ ] All existing Micrometer metrics visible in Prometheus UI (verify after Prometheus setup)
 
 ### Grafana Dashboards
 - [ ] Dashboard 1: API Overview (req/s, p95 latency, error rate by endpoint)
@@ -415,10 +425,10 @@ All API endpoints classified by audience, auth requirement, and production expos
 - [ ] Alert silence and escalation policy documented
 
 ### Structured Logging
-- [ ] `logstash-logback-encoder` added to `pom.xml`
-- [ ] `logback-spring.xml` outputs JSON in staging and prod profiles
-- [ ] All MDC fields appear in JSON log: `requestId`, `transferRef`, `inquiryRef`, `outboxEventId`, `bankCode`
-- [ ] No sensitive data (account numbers, API keys) in log JSON
+- [x] `logstash-logback-encoder` 8.0 added to `pom.xml`
+- [x] `logback-spring.xml` created: text format for `default,dev,test`; JSON (`LogstashEncoder`) for `staging,prod`; `ShortenedThrowableConverter` with rootCauseFirst
+- [x] All MDC fields included automatically in JSON log: `requestId`, `transferRef`, `inquiryRef`, `outboxEventId`, `bankCode` (LogstashEncoder includes all MDC keys by default)
+- [ ] No sensitive data (account numbers, API keys) in log JSON — pending full MaskingUtil rollout (P4 remaining)
 
 ### Log Aggregation
 - [ ] Log shipping configured (Fluentd / Filebeat → Elasticsearch / OpenSearch)
@@ -462,10 +472,10 @@ All API endpoints classified by audience, auth requirement, and production expos
 - [ ] Flyway migration runs as `initContainer` before app pods start
 
 ### Graceful Shutdown
-- [ ] `OutboxDispatchWorker` handles shutdown signal: no new events accepted
-- [ ] In-progress outbox events are either completed or rolled back cleanly on shutdown
-- [ ] `spring.lifecycle.timeout-per-shutdown-phase` configured (recommend: 30s)
-- [ ] Shutdown tested: kill signal → drain → graceful stop → no orphaned PROCESSING events
+- [x] `OutboxDispatchWorker` handles shutdown signal: `volatile boolean shuttingDown` + `@PreDestroy` sets flag; both `onOutboxCreated` and `processPendingEvents` check before dispatching; mid-batch loop exits on flag
+- [x] `server.shutdown: graceful` configured in `application.yml` — Spring HTTP drains in-flight requests before shutdown
+- [x] `spring.lifecycle.timeout-per-shutdown-phase: 30s` configured in `application.yml`
+- [ ] Shutdown tested end-to-end: kill signal → drain → graceful stop → verify no orphaned PROCESSING events
 
 ### Zero-Downtime Deploy
 - [ ] Rolling update strategy: `maxUnavailable: 0, maxSurge: 1`
@@ -546,3 +556,7 @@ All API endpoints classified by audience, auth requirement, and production expos
 | 2026-05-14 | 1.0 | Initial checklist — Phase 0 baseline freeze |
 | 2026-05-14 | 1.1 | Phase 0 marked 90% done; Phase 1 updated to 95% — Testcontainers 46/46 PASS, CI pipeline, Dockerfile 3-stage + non-root, run.sh commands, TC-071 fix |
 | 2026-05-14 | 1.2 | Phase 2 at 85% — Spring profiles dev/staging/prod, ProductionStartupValidator, IsoMessageCryptoService fix, docker-compose SPRING_PROFILES_ACTIVE=dev; 60/60 tests PASS |
+| 2026-05-15 | 1.3 | P3 at 45% — V15 seed (participants+routing_rules), V16 performance indexes (6), V17 API key hardening migration; P4 at 30% — SHA-256 key hashing, key_prefix, expires_at, ApiKeyAuthFilter expiry check, ApiKeyService (create/list/disable/rotate), ApiKeyController ADMIN-only endpoints, SecurityConfig updated; XXE marked done for both parsers |
+| 2026-05-15 | 1.4 | P2 at 95% — ProductionDemoKeyDisableService (@Profile("prod") disables demo keys by name+prefix on startup), .env in .gitignore confirmed, no hardcoded keys in src/; P3 at 65% — init-db-users.sh (switching_app DML-only, switching_flyway DDL), docker-compose.yml updated (mounts init script, app uses switching_app, Flyway uses switching_flyway), application.yml FLYWAY_URL/USERNAME/PASSWORD env vars; P4 at 40% — MaskingUtil.maskAccount(), XML body size 1MB |
+| 2026-05-15 | 1.6 | P5 55% — audit trail for manual retry (OUTBOX_MANUAL_RETRY_REQUESTED) and mark-reviewed (OUTBOX_EVENT_MARKED_REVIEWED) confirmed present; P6 30% — micrometer-registry-prometheus added, /actuator/prometheus exposed (staging: main port; prod: MANAGEMENT_PORT:9090), logstash-logback-encoder 8.0 added, logback-spring.xml created (text for dev, JSON for staging/prod with ShortenedThrowableConverter + MDC fields) |
+| 2026-05-15 | 1.5 | Bug fixes: ParticipantType enum changed to DIRECT/INDIRECT (was BANK/SWITCHING/SERVICE_PROVIDER); V19 compensating migration fixes existing DB rows; V18 drops duplicate outbox index; GlobalExceptionHandler adds log.error to expose swallowed exceptions; 60/60 Maven tests PASS. P5 started (35%) — exponential backoff 30s/2min/10min, next_retry_at filter in outbox poller (findPendingBatch), nextRetryAt entity field. P7 started (25%) — graceful shutdown: volatile shuttingDown flag + @PreDestroy in OutboxDispatchWorker, server.shutdown:graceful + timeout-per-shutdown-phase:30s. P4 45% — MaskingUtil applied to creditorAccount in CreateTransferService audit payloads. Test fix: TC-103–107 ISO tests switched to BANK_B_KEY (BANK_B→BANK_A) to avoid BANK_A_KEY rate-limit exhaustion. |

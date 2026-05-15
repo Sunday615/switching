@@ -25,8 +25,13 @@ public class ApiKeyEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "key_value", nullable = false, unique = true, length = 128)
+    /** SHA-256 hex digest of the original API key. Never stores plaintext after V17. */
+    @Column(name = "key_value", nullable = false, unique = true, length = 64)
     private String keyValue;
+
+    /** First 12 characters of the original key, for display only (e.g. "sk-admin-swi"). */
+    @Column(name = "key_prefix", length = 16)
+    private String keyPrefix;
 
     @Column(name = "name", nullable = false, length = 128)
     private String name;
@@ -46,4 +51,8 @@ public class ApiKeyEntity {
 
     @Column(name = "last_used_at")
     private LocalDateTime lastUsedAt;
+
+    /** NULL = key never expires. Enforced in ApiKeyAuthFilter. */
+    @Column(name = "expires_at")
+    private LocalDateTime expiresAt;
 }

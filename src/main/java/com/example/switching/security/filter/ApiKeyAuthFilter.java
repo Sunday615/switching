@@ -11,6 +11,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.example.switching.security.entity.ApiKeyEntity;
 import com.example.switching.security.repository.ApiKeyRepository;
+import com.example.switching.security.util.ApiKeyHashUtil;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -36,10 +37,13 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
         String apiKey = request.getHeader(API_KEY_HEADER);
 
         if (apiKey != null && !apiKey.isBlank()) {
-            apiKeyRepository.findByKeyValueAndEnabledTrue(apiKey.trim())
+            String keyHash = ApiKeyHashUtil.hash(apiKey.trim());
+            apiKeyRepository.findByKeyValueAndEnabledTrue(keyHash)
                     .ifPresent(key -> {
-                        authenticate(key);
-                        updateLastUsed(key);
+                        if (key.getExpiresAt() == null || !LocalDateTime.now().isAfter(key.getExpiresAt())) {
+                            authenticate(key);
+                            updateLastUsed(key);
+                        }
                     });
         }
 

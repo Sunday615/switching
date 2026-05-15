@@ -39,7 +39,7 @@ public class ParticipantManagementService {
         }
 
         ParticipantStatus status = parseStatus(request.getStatus(), ParticipantStatus.ACTIVE);
-        ParticipantType participantType = parseType(request.getParticipantType(), ParticipantType.BANK);
+        ParticipantType participantType = parseType(request.getParticipantType(), ParticipantType.DIRECT);
 
         ParticipantEntity entity = new ParticipantEntity();
         entity.setBankCode(bankCode);
@@ -112,7 +112,7 @@ public class ParticipantManagementService {
             return ParticipantType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException(
-                    "Invalid participant type: " + raw + ". Valid values: BANK, SWITCHING, SERVICE_PROVIDER");
+                    "Invalid participant type: " + raw + ". Valid values: DIRECT, INDIRECT");
         }
     }
 

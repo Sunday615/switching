@@ -1,5 +1,6 @@
 package com.example.switching.outbox.worker;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -10,6 +11,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+
+import jakarta.annotation.PreDestroy;
 
 import com.example.switching.outbox.entity.OutboxEventEntity;
 import com.example.switching.outbox.enums.OutboxStatus;
@@ -27,6 +30,8 @@ public class OutboxDispatchWorker {
 
     private final OutboxEventRepository outboxEventRepository;
     private final OutboxProcessorService outboxProcessorService;
+
+    private volatile boolean shuttingDown = false;
 
     @Value("${switching.outbox.worker.batch-size:20}")
     private int batchSize;
@@ -50,9 +55,19 @@ public class OutboxDispatchWorker {
                 .register(meterRegistry);
     }
 
+    @PreDestroy
+    public void onShutdown() {
+        log.info("Outbox worker shutting down — no new events will be dispatched");
+        shuttingDown = true;
+    }
+
     // ── Near real-time: triggered immediately after transaction commits ────────
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onOutboxCreated(OutboxCreatedEvent event) {
+        if (shuttingDown) {
+            log.warn("Outbox worker shutting down — skipping near-real-time dispatch outboxEventId={}", event.outboxEventId());
+            return;
+        }
         log.debug("Near real-time dispatch triggered: outboxEventId={} transferRef={}",
                 event.outboxEventId(), event.transferRef());
         outboxProcessorService.processSingleEvent(event.outboxEventId());
@@ -61,8 +76,12 @@ public class OutboxDispatchWorker {
     // ── Safety net: polls DB every N seconds to catch anything missed ─────────
     @Scheduled(fixedDelayString = "${switching.outbox.worker.poll-interval-ms:30000}")
     public void processPendingEvents() {
+        if (shuttingDown) {
+            return;
+        }
+
         List<OutboxEventEntity> events = outboxEventRepository
-                .findPendingBatch(OutboxStatus.PENDING, PageRequest.of(0, batchSize));
+                .findPendingBatch(OutboxStatus.PENDING, LocalDateTime.now(), PageRequest.of(0, batchSize));
 
         if (events.isEmpty()) {
             return;
@@ -71,6 +90,10 @@ public class OutboxDispatchWorker {
         log.info("Outbox safety-net poll found {} pending event(s)", events.size());
 
         for (OutboxEventEntity event : events) {
+            if (shuttingDown) {
+                log.info("Outbox worker shutting down — stopping mid-batch at outboxEventId={}", event.getId());
+                break;
+            }
             outboxProcessorService.processSingleEvent(event.getId());
         }
     }

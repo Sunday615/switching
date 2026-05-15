@@ -64,7 +64,7 @@ class ParticipantManagementServiceTest {
         assertEquals("BANK_A", response.getBankCode());
         assertEquals("Bank A", response.getBankName());
         assertEquals("ACTIVE", response.getStatus());
-        assertEquals("BANK", response.getParticipantType());
+        assertEquals("DIRECT", response.getParticipantType());
         assertEquals("LA", response.getCountry());
         assertEquals("LAK", response.getCurrency());
 
@@ -100,7 +100,7 @@ class ParticipantManagementServiceTest {
         existing.setBankCode("BANK_A");
         existing.setBankName("Bank A");
         existing.setStatus(ParticipantStatus.ACTIVE);
-        existing.setParticipantType(ParticipantType.BANK);
+        existing.setParticipantType(ParticipantType.DIRECT);
         existing.setCountry("LA");
         existing.setCurrency("LAK");
 
@@ -123,7 +123,7 @@ class ParticipantManagementServiceTest {
         assertEquals("BANK_A", response.getBankCode());
         assertEquals("Bank A Updated", response.getBankName());
         assertEquals("MAINTENANCE", response.getStatus());
-        assertEquals("BANK", response.getParticipantType());
+        assertEquals("DIRECT", response.getParticipantType());
         assertEquals("TH", response.getCountry());
         assertEquals("THB", response.getCurrency());
 

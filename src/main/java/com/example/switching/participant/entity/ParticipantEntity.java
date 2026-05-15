@@ -62,7 +62,7 @@ public class ParticipantEntity {
         }
 
         if (this.participantType == null) {
-            this.participantType = ParticipantType.BANK;
+            this.participantType = ParticipantType.DIRECT;
         }
     }
 

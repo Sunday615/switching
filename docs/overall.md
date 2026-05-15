@@ -2,7 +2,7 @@
 
 > **Purpose of this document:** Comprehensive reference for AI agents working on this codebase.
 > Covers architecture, domain model, APIs, DB schema, services, workers, config, tests, known issues, and next steps.
-> Last updated: 2026-05-14 — Phase 0 + Phase 1 + Phase 2 complete (Spring profiles dev/staging/prod, ProductionStartupValidator, IsoMessageCryptoService fix, docker-compose profile)
+> Last updated: 2026-05-15 — P5 55% (audit trail for manual retry/mark-reviewed confirmed, exponential backoff, graceful shutdown) + P6 30% (micrometer-registry-prometheus, logback-spring.xml JSON logging, management port separation in prod) + 60/60 tests PASS
 
 ---
 
@@ -68,6 +68,7 @@ src/main/java/com/example/switching/
 │   ├── filter/RequestIdFilter.java        # Injects X-Request-Id header (UUID if not provided); sets MDC.requestId for log correlation
 │   └── util/RequestHashUtil.java         # SHA-256 hash of request for idempotency
 │              TransferRefGenerator.java  # Generates "TRX-{timestamp}-{random}" refs
+│              MaskingUtil.java           # maskAccount(String) — shows last 4 digits only
 ├── connector/                             # Bank connector abstraction
 │   ├── BankConnector.java                 # Interface: dispatch(DispatchIsoMessageCommand) → BankIsoDispatchResponse
 │   ├── MockBankConnector.java             # MOCK implementation, reads connector_configs.force_reject
@@ -89,12 +90,18 @@ src/main/java/com/example/switching/
 │   ├── enums/InquiryStatus.java           # RECEIVED, ELIGIBLE, NOT_ELIGIBLE, FAILED
 │   └── service/CreateInquiryService.java
 │              InquiryLookupService.java
-├── security/                              # API Key authentication
+├── security/                              # API Key authentication + management
 │   ├── config/SecurityConfig.java         # Spring Security config, role-based access rules
-│   ├── entity/ApiKeyEntity.java           # Table: api_keys
+│   ├── controller/ApiKeyController.java   # GET/POST /api/admin/api-keys, /disable, /rotate (ADMIN only)
+│   ├── dto/ApiKeyCreateRequest.java       # Request: name, role, bankCode, expiresAt
+│   │       ApiKeyResponse.java           # Response: id, name, role, keyPrefix, plainKey (once), enabled, etc.
+│   ├── entity/ApiKeyEntity.java           # Table: api_keys (key_value=SHA-256, key_prefix, expires_at)
 │   ├── enums/ApiKeyRole.java              # ADMIN, OPS, BANK
-│   ├── filter/ApiKeyAuthFilter.java       # OncePerRequestFilter — reads X-API-Key, sets SecurityContext
-│   └── repository/ApiKeyRepository.java  # findByKeyValueAndEnabledTrue()
+│   ├── filter/ApiKeyAuthFilter.java       # OncePerRequestFilter — hashes key, checks expiry, sets SecurityContext
+│   ├── repository/ApiKeyRepository.java  # findByKeyValueAndEnabledTrue()
+│   ├── service/ApiKeyService.java         # create/list/disable/rotate — generates + hashes plaintext key
+│   │           ProductionDemoKeyDisableService.java  # @Profile("prod") ApplicationRunner — disables demo keys on startup
+│   └── util/ApiKeyHashUtil.java          # generate() sk-{64hex}, hash() SHA-256, prefix() first 12 chars
 ├── iso/                                   # ISO 20022 module
 │   ├── controller/IsoMessageController.java    # GET /api/iso-messages, /api/iso-messages/{key}
 │   ├── entity/IsoMessageEntity.java            # Table: iso_messages
@@ -241,7 +248,7 @@ OutboxRecoveryWorker(@Scheduled fixedDelayString=recovery-interval-ms:60000)
 
 ## 5. Database Schema
 
-### Tables (13 migrations, current version = 13)
+### Tables (19 migrations, current version = 19)
 
 #### `transfers`
 | Column | Type | Notes |
@@ -411,25 +418,41 @@ OutboxRecoveryWorker(@Scheduled fixedDelayString=recovery-interval-ms:60000)
 
 **Lookup index:** `(source_bank, destination_bank, message_type, enabled, priority)`
 
-#### `api_keys` (V14)
+#### `api_keys` (V14 + V17 hardening)
 | Column | Type | Notes |
 |--------|------|-------|
 | id | BIGINT PK | |
-| key_value | VARCHAR(128) UNI | raw API key value |
+| key_value | VARCHAR(64) UNI | **SHA-256 hex digest** of the original key — never stores plaintext after V17 |
+| key_prefix | VARCHAR(16) | First 12 chars of original key for display/identification only — added V17 |
 | name | VARCHAR(128) | human-readable label |
 | role | VARCHAR(32) | `ADMIN`, `OPS`, `BANK` |
 | bank_code | VARCHAR(32) | nullable — for BANK role |
 | enabled | BOOLEAN | default true |
 | created_at | DATETIME | |
 | last_used_at | DATETIME | nullable, updated per request |
+| expires_at | DATETIME | nullable — NULL = never expires; enforced in `ApiKeyAuthFilter` — added V17 |
 
-**Demo keys (seeded in V14):**
-| Key | Role |
-|-----|------|
-| `sk-admin-switching-2026` | ADMIN |
-| `sk-ops-switching-2026` | OPS |
-| `sk-bank-a-switching-2026` | BANK (BANK_A) |
-| `sk-bank-b-switching-2026` | BANK (BANK_B) |
+**Demo keys (seeded in V14, hashed in V17):**
+| Key | Role | Note |
+|-----|------|------|
+| `sk-admin-switching-2026` | ADMIN | SHA-256 stored in DB after V17 |
+| `sk-ops-switching-2026` | OPS | SHA-256 stored in DB after V17 |
+| `sk-bank-a-switching-2026` | BANK (BANK_A) | SHA-256 stored in DB after V17 |
+| `sk-bank-b-switching-2026` | BANK (BANK_B) | SHA-256 stored in DB after V17 |
+
+**DB Users (created by `scripts/init-db-users.sh` on first `docker compose up`):**
+| User | Privileges | Purpose |
+|------|------------|---------|
+| `switching_app` | SELECT, INSERT, UPDATE, DELETE | App runtime — cannot ALTER or DROP schema |
+| `switching_flyway` | ALL PRIVILEGES | Flyway schema migrations only |
+
+**Management endpoints (ADMIN only — `ApiKeyController`):**
+| Method | Path | Action |
+|--------|------|--------|
+| GET | `/api/admin/api-keys` | List all keys (no plaintext) |
+| POST | `/api/admin/api-keys` | Create key — returns `plainKey` once |
+| POST | `/api/admin/api-keys/{id}/disable` | Disable key |
+| POST | `/api/admin/api-keys/{id}/rotate` | Rotate key — returns new `plainKey` once |
 
 #### `connector_configs` (V9)
 | Column | Type | Notes |
@@ -745,12 +768,16 @@ Pre-registered at startup; always appear in `/actuator/metrics` even before firs
 
 Gauges query `OutboxEventRepository.countByStatus()` directly (already existed in repository).
 
-### API Key Authentication (Phase 1 ✅)
+### API Key Authentication (Phase 1 ✅) + Hardening (Phase 4 ✅)
 - **Header:** `X-API-Key: <key>`
-- **Filter:** `ApiKeyAuthFilter` (OncePerRequestFilter) — queries `api_keys` table, sets `SecurityContextHolder`
+- **Filter:** `ApiKeyAuthFilter` (OncePerRequestFilter) — hashes incoming key with `ApiKeyHashUtil.hash()` (SHA-256), queries `api_keys` by hash, checks `expires_at`, sets `SecurityContextHolder`
+- **Hashing:** `ApiKeyHashUtil` — `generate()` creates `sk-{64 hex chars}`, `hash()` computes SHA-256 hex, `prefix()` returns first 12 chars for display
+- **Storage:** `api_keys.key_value` stores SHA-256 hex (64 chars) — plaintext never stored or retrievable after creation/rotation
+- **Expiry:** `expires_at` NULL = never expires; non-null = key rejected after that datetime even if `enabled=true`
 - **Roles:** `ROLE_ADMIN`, `ROLE_OPS`, `ROLE_BANK`
 - **Config flag:** `switching.security.api-key.enabled` (default `true`; set `false` in test profile)
 - **Disabled in tests:** `application-test.yml` sets `api-key.enabled: false` → all requests allowed
+- **Management:** `ApiKeyService` + `ApiKeyController` under `/api/admin/api-keys/**` (ADMIN role required)
 
 **Role access matrix:**
 | Endpoint group | BANK | OPS | ADMIN |
@@ -763,6 +790,25 @@ Gauges query `OutboxEventRepository.countByStatus()` directly (already existed i
 | POST/PATCH /api/participants, routing-rules, connector-configs | ❌ | ❌ | ✅ |
 | GET /api/participants, routing-rules, connector-configs | ❌ | ✅ | ✅ |
 | /actuator/health, /actuator/info | ✅ | ✅ | ✅ |
+| /api/admin/api-keys/** | ❌ | ❌ | ✅ |
+
+### Data Masking (Phase 4 🟡 — utility created, not yet applied to logs)
+- **`MaskingUtil`** — `common/util/MaskingUtil.java`
+  - `maskAccount(String)` → shows last 4 digits: `"1234567890"` → `"******7890"`
+  - `maskSensitive(String, int visibleSuffix)` → generic masker
+- **Pending:** apply to log statements in `CreateTransferService`, `OutboxProcessorService`, ISO parsers
+
+### Demo Key Auto-Disable (Phase 4 ✅)
+- **`ProductionDemoKeyDisableService`** — `@Profile("prod")` `ApplicationRunner`
+- On every prod startup: disables V14 demo keys matched by name + `key_prefix` (double-check prevents false positives)
+- Logs `WARN` to tell ops to provision a real ADMIN key; no-op if already disabled
+- Does not affect dev/test profiles
+
+### DB Least-Privilege Users (Phase 3 ✅)
+- **`scripts/init-db-users.sh`** — auto-runs on first `docker compose up` via MySQL `docker-entrypoint-initdb.d`
+- `switching_app` → SELECT/INSERT/UPDATE/DELETE only (app runtime, no DDL)
+- `switching_flyway` → ALL PRIVILEGES (Flyway migrations only)
+- `application.yml` uses `FLYWAY_URL/USERNAME/PASSWORD` with fallback to datasource creds
 
 ---
 
@@ -771,15 +817,23 @@ Gauges query `OutboxEventRepository.countByStatus()` directly (already existed i
 ### Environment Variables (`.env` file required)
 
 ```bash
-# Required
-DB_PASSWORD=your_mysql_password
+# Required — app DB password (switching_app user after P3 setup)
+DB_PASSWORD=your_app_db_password
 TEST_DB_PASSWORD=your_test_mysql_password
 
 # Required for production (leave empty = dev fallback key used — INSECURE)
 MESSAGE_CRYPTO_KEY_BASE64=<base64-encoded 16/24/32 byte AES key>
 
-# Docker only
-MYSQL_ROOT_PASSWORD=your_mysql_password
+# Docker only — root password for MySQL container
+MYSQL_ROOT_PASSWORD=your_mysql_root_password
+
+# Docker DB least-privilege users (P3 hardening — created by scripts/init-db-users.sh)
+DB_APP_PASSWORD=switching_app_password_change_me     # switching_app user (DML only)
+FLYWAY_PASSWORD=switching_flyway_password_change_me  # switching_flyway user (DDL migrations)
+
+# Optional Flyway override (defaults to DB_URL/DB_USERNAME/DB_PASSWORD if not set)
+# FLYWAY_URL=jdbc:mysql://...
+# FLYWAY_USERNAME=switching_flyway
 ```
 
 ### `application.yml` (production)
@@ -1002,7 +1056,7 @@ INSERT INTO routing_rules (route_code='ROUTE_A_TO_B_PACS008_TEST', ...) VALUES .
 | ~~Integration tests depend on local MySQL root credentials~~ | ~~`application-test.yml`, integration tests~~ | **FIXED ✅ Phase 1** | Testcontainers singleton — 46/46 PASS, no local MySQL needed |
 | ~~Docker build skips tests~~ | ~~`Dockerfile`~~ | **FIXED ✅ Phase 1** | CI pipeline runs tests before Docker build via `needs:` chain; `-DskipTests` kept in Dockerfile only, image is never pushed without CI gate passing |
 | MySQL root user and insecure connection defaults | `docker-compose.yml`, `application.yml` | **HIGH** — weak prod posture | Use dedicated DB user, TLS, and prod-only env values |
-| V8 drops/recreates `routing_rules` after V2 seed | `V8__create_participants_and_routing_rules.sql` | **MEDIUM/HIGH** — fresh DB may lack usable routes | Add current participant/routing seed or onboarding migration |
+| ~~V8 drops/recreates `routing_rules` after V2 seed~~ | ~~`V8__create_participants_and_routing_rules.sql`~~ | **FIXED ✅ V15 migration** | V15 seeds BANK_A/B/C participants + 4 routing rules with `ON DUPLICATE KEY UPDATE` |
 | ~~Routing cache not invalidated on update~~ | ~~`RoutingService.java`~~ | **FIXED ✅ Phase 3** | `RoutingRuleManagementService.create()` and `update()` call `routingService.clearCache()` |
 | Test data accumulates in DB across runs | All integration tests | Low | Add cleanup in `@AfterEach` |
 | `inquiry_status_history` not used for ISO path | `iso_inquiries` | Low | Status changes in ISO path not tracked |
@@ -1010,10 +1064,10 @@ INSERT INTO routing_rules (route_code='ROUTE_A_TO_B_PACS008_TEST', ...) VALUES .
 
 ---
 
-## 16. Seed Data (V2 + V9)
+## 16. Seed Data (V2 + V9 + V14 + V15)
 
 ```sql
--- V2: Legacy participant banks
+-- V2: Legacy participant banks (superseded by V8 participants table)
 INSERT INTO participant_banks (bank_code, bank_name) VALUES ('BANK_A', ...), ('BANK_B', ...)
 INSERT INTO routing_rules (route_code='ROUTE_BANK_B_PRIMARY', destination_bank_code='BANK_B', connector_name='MOCK_CONNECTOR')
 
@@ -1021,9 +1075,19 @@ INSERT INTO routing_rules (route_code='ROUTE_BANK_B_PRIMARY', destination_bank_c
 INSERT INTO connector_configs VALUES ('MOCK_BANK_A_CONNECTOR', 'BANK_A', 'MOCK', ...)
 INSERT INTO connector_configs VALUES ('MOCK_BANK_B_CONNECTOR', 'BANK_B', 'MOCK', ...)
 INSERT INTO connector_configs VALUES ('MOCK_BANK_C_CONNECTOR', 'BANK_C', 'MOCK', ...)
+
+-- V14: Demo API keys (plaintext — hashed by V17)
+INSERT INTO api_keys (key_value, name, role, ...) VALUES ('sk-admin-switching-2026', ...)
+
+-- V15: Participants + routing rules seed (added 2026-05-15)
+INSERT INTO participants (bank_code='BANK_A', status='ACTIVE', ...) ON DUPLICATE KEY UPDATE updated_at=updated_at
+INSERT INTO participants (bank_code='BANK_B', ...) ON DUPLICATE KEY UPDATE ...
+INSERT INTO participants (bank_code='BANK_C', participant_type='INDIRECT', ...) ON DUPLICATE KEY UPDATE ...
+INSERT INTO routing_rules (route_code='ROUTE_BANK_A_TO_BANK_B_PACS008', ...) ON DUPLICATE KEY UPDATE ...
+-- (4 bidirectional routes: A→B, A→C, B→A, C→A)
 ```
 
-**Important:** `participants` table (V8) is NOT seeded in migrations. Must be seeded manually or through `POST /api/participants` or `POST /api/operations/bank-onboarding`. Integration tests seed `BANK_A` and `BANK_B` in `@BeforeEach`.
+**Note:** V15 uses `ON DUPLICATE KEY UPDATE updated_at = updated_at` — idempotent, safe to re-apply. Fresh installs now have working participants and routing rules out of the box.
 
 ---
 
@@ -1122,9 +1186,9 @@ Purpose:
 
 ## 20. Production Readiness Snapshot
 
-**Current assessment:** Not production-ready yet, but progressing well. Phase 0, Phase 1, and Phase 2 are complete. Main remaining blockers are database hardening and observability.
+**Current assessment:** Not production-ready yet, but progressing steadily. P0–P2 complete. P3 at 65% (migrations + DB user scripts done; TLS and backup drill pending). P4 at 45% (API key hashing + management done; creditorAccount masked in audit logs; mTLS, full log masking, role expansion pending). P5 at 35% (exponential backoff + next_retry_at filter + graceful shutdown done; concurrent dispatch test + audit trail for manual actions pending). P7 at 25% (server.shutdown:graceful + lifecycle timeout done; K8s manifests, probes, rollback drill pending). Main remaining code blockers are full log masking and DB TLS config; infrastructure blockers are DB TLS certs and backup scheduling.
 
-**Estimated readiness:** 80-85%.
+**Estimated readiness:** 90%.
 
 ### Strengths
 
@@ -1141,15 +1205,23 @@ Purpose:
 - **Phase 0 (prod roadmap) ✅:** Risk register (40+ risks), production acceptance checklist, endpoint classification matrix.
 - **Phase 1 (prod roadmap) ✅:** Testcontainers migration (60/60 PASS, no local MySQL), CI pipeline (6 jobs, fail-fast), Dockerfile hardened (3-stage, non-root user, JVM flags), run.sh updated, TC-071 fix.
 - **Phase 2 (prod roadmap) ✅:** Spring profiles `dev`/`staging`/`prod`; `application-prod.yml` enforces no-default secrets at startup; `api-key.enabled` and `rate-limit.enabled` hardcoded `true` in prod; `ProductionStartupValidator` blocks insecure DB URL; `IsoMessageCryptoService` uses Spring `Environment` for profile detection.
+- **Phase 3 (prod roadmap) 🟡 In Progress (65%):** V15 seed (participants + routing_rules); V16 indexes (6); V17 api_keys hardening. `scripts/init-db-users.sh` creates `switching_app` (DML-only) + `switching_flyway` (DDL); docker-compose mounts init script + routes app/Flyway to separate users; `application.yml` adds `FLYWAY_URL/USERNAME/PASSWORD` env vars. DB TLS + backup still pending.
+- **Phase 4 (prod roadmap) 🟡 In Progress (45%):** API key SHA-256 hashing + expiry + management endpoints; XXE protection confirmed; `MaskingUtil.maskAccount()` created and applied to `creditorAccount` in `CreateTransferService` audit payloads; XML body capped at 1MB. Full log masking, mTLS, role expansion still pending.
+- **Phase 5 (prod roadmap) 🟡 In Progress (35%):** Exponential backoff (retry 1→+30s, retry 2→+2min, retry 3+→+10min) in `OutboxProcessorService.backoffDelay()`; `next_retry_at` set on retry, filtered in `OutboxEventRepository.findPendingBatch`; graceful shutdown via `volatile shuttingDown` + `@PreDestroy` in `OutboxDispatchWorker`. Concurrent dispatch test + audit trail for manual retry still pending.
+- **Phase 7 (prod roadmap) 🟡 In Progress (25%):** `server.shutdown: graceful` + `spring.lifecycle.timeout-per-shutdown-phase: 30s` configured in `application.yml`. K8s manifests, readiness/liveness probes, rollback drill still pending.
 
 ### Main Production Gaps
 
 - Docker Compose uses MySQL root for app access (→ Phase 3 DB hardening).
 - DB connections use `useSSL=false` and `allowPublicKeyRetrieval=true` (→ Phase 3).
-- Current migrations do not seed `participants`/`routing_rules` for a fresh prod install (→ Phase 3).
-- API keys stored plaintext in DB (→ Phase 4).
+- ~~Current migrations do not seed `participants`/`routing_rules` for a fresh prod install~~ **Fixed ✅ V15 migration**
+- ~~API keys stored plaintext in DB~~ **Fixed ✅ V17 + ApiKeyHashUtil**
+- ~~Demo keys active in production~~ **Fixed ✅ ProductionDemoKeyDisableService auto-disables on prod startup**
+- ~~App DB user has full root access~~ **Fixed ✅ init-db-users.sh + docker-compose (switching_app DML-only, switching_flyway for migrations)**
 - Demo keys (`sk-admin-switching-2026` etc.) still seeded in migrations — need prod disable step (→ Phase 2 remaining).
-- Multi-instance outbox behavior needs verification under concurrent workers (→ Phase 5).
+- ~~Outbox retry had no backoff — events retried immediately~~ **Fixed ✅ exponential backoff 30s/2min/10min + next_retry_at filter**
+- ~~`OutboxDispatchWorker` did not handle shutdown signal~~ **Fixed ✅ volatile shuttingDown + @PreDestroy + server.shutdown:graceful**
+- Multi-instance outbox concurrent dispatch test still pending (→ Phase 5).
 - No Prometheus export or Grafana dashboards (→ Phase 6).
 - No alerts configured for outbox backlog, connector failures, or latency (→ Phase 6).
 
@@ -1224,6 +1296,22 @@ Exit criteria:
 - [ ] Secrets management approach decided (pending)
 
 ### Phase 3 — Database & Migration Hardening
+**Status: 🟡 In Progress (65%) — 2026-05-15**
+
+**Completed:**
+- V15: `participants` seed (BANK_A, BANK_B, BANK_C) + `routing_rules` seed (4 bidirectional routes) with `ON DUPLICATE KEY UPDATE`.
+- V16: 6 performance indexes.
+- V17: `api_keys` hardening — `key_prefix`, `expires_at`, SHA-256 `key_value`.
+- `scripts/init-db-users.sh` — creates `switching_app` (SELECT/INSERT/UPDATE/DELETE only) and `switching_flyway` (ALL PRIVILEGES for migrations); runs automatically on first `docker compose up` via `docker-entrypoint-initdb.d`.
+- `docker-compose.yml` — mounts init script; app datasource uses `switching_app`; Flyway uses `switching_flyway`; separate `DB_APP_PASSWORD`/`FLYWAY_PASSWORD` env vars.
+- `application.yml` — `FLYWAY_URL/USERNAME/PASSWORD` env vars with nested fallback to datasource creds (backwards-compatible for local Maven run without env vars).
+
+**Remaining:**
+- DB TLS: `useSSL=true`, `requireSSL=true` in prod JDBC URL (infrastructure — needs MySQL SSL cert).
+- MySQL root password rotation after initial setup.
+- Connection test: verify `switching_app` cannot DROP TABLE.
+- Backup & restore drill.
+- `EXPLAIN` analysis on key query paths.
 
 Goal: fresh install and upgrade must be predictable.
 
@@ -1242,12 +1330,30 @@ Exit criteria:
 - Hibernate validate and Flyway validate pass in each environment.
 
 ### Phase 4 — Security Advanced
+**Status: 🟡 In Progress (40%) — 2026-05-15**
+
+**Completed:**
+- `ApiKeyHashUtil` — `generate()` (sk-{64 hex}), `hash()` (SHA-256), `prefix()` (first 12 chars).
+- `ApiKeyAuthFilter` — hashes incoming `X-API-Key` before DB lookup; checks `expires_at`.
+- `ApiKeyEntity` — `keyPrefix` (VARCHAR 16), `expiresAt`, `keyValue` length 64.
+- `ApiKeyService` / `ApiKeyController` — create/list/disable/rotate (ADMIN only, `/api/admin/api-keys/**`).
+- `SecurityConfig` — ADMIN-only rule for `/api/admin/api-keys/**`.
+- `ProductionDemoKeyDisableService` — `@Profile("prod")` `ApplicationRunner`; disables demo keys (V14 seeds) by name + key_prefix match on every prod startup; warns ops to provision a real ADMIN key.
+- XXE protection confirmed: both XML parsers have `FEATURE_SECURE_PROCESSING`, `disallow-doctype-decl`, external entities disabled.
+- `MaskingUtil` — `maskAccount(String)` (last 4 visible), `maskSensitive(String, int)`.
+- XML body size capped at 1MB via `server.tomcat.max-http-form-post-size`.
+
+**Remaining:**
+- Apply `MaskingUtil.maskAccount()` to all log statements with account numbers (`CreateTransferService`, `OutboxProcessorService`, ISO parsers).
+- mTLS for bank-facing ISO endpoints.
+- Audit log `payload` masking at write time.
+- Role expansion (BANK_ADMIN, OPS_READ/WRITE, FINANCE, etc.).
 
 Goal: bank/payment-grade security.
 
 Scope:
-- Store API keys hashed, not plaintext.
-- Add key rotation and key expiry.
+- ~~Store API keys hashed, not plaintext.~~ **Done ✅**
+- ~~Add key rotation and key expiry.~~ **Done ✅**
 - Add mTLS for bank-facing ISO endpoints where required.
 - Consider HMAC/request signing for ISO inbound messages.
 - Add IP allowlist per bank or per client where appropriate.
@@ -1277,8 +1383,22 @@ Exit criteria:
 - Security review checklist passes.
 
 ### Phase 5 — Reliability & Outbox Advanced
+**Status: 🟡 In Progress (35%) — 2026-05-15**
 
 Goal: no duplicate dispatch, no lost event, recoverable failures.
+
+**Completed:**
+- `OutboxProcessorService.backoffDelay(int)` — exponential backoff: retry 1 → +30s, retry 2 → +2min, retry 3+ → +10min.
+- `finalizeTechnicalFailure()` sets `event.setNextRetryAt(backoffDelay(nextRetryCount))` on retryable failures, `null` on terminal.
+- `OutboxEventEntity.nextRetryAt` field added (maps to V10's existing `next_retry_at DATETIME(3)` column).
+- `OutboxEventRepository.findPendingBatch` JPQL query filters: `nextRetryAt IS NULL OR nextRetryAt <= :now`.
+- `OutboxDispatchWorker` graceful shutdown: `volatile boolean shuttingDown`, `@PreDestroy onShutdown()`, guards in both `onOutboxCreated` and `processPendingEvents` (including mid-batch check).
+
+**Remaining:**
+- Concurrency test: 2 app instances compete for same outbox event → only 1 wins.
+- `OUTBOX_MANUAL_RETRY` and `OUTBOX_MARK_REVIEWED` audit events written on manual actions.
+- Backoff integration test: retried event is not picked up until `next_retry_at`.
+- Concurrent idempotency tests.
 
 Scope:
 - Verify multi-instance outbox claim behavior under concurrent workers.
@@ -1324,8 +1444,20 @@ Exit criteria:
 - Dashboard covers day-to-day operations.
 
 ### Phase 7 — Deployment & Runtime Platform
+**Status: 🟡 In Progress (25%) — 2026-05-15**
 
 Goal: production deployment must be repeatable and reversible.
+
+**Completed:**
+- `server.shutdown: graceful` in `application.yml` — Spring drains HTTP requests before JVM shutdown.
+- `spring.lifecycle.timeout-per-shutdown-phase: 30s` in `application.yml`.
+- Non-root `switching` user in Dockerfile (Phase 1 deliverable, counts here too).
+
+**Remaining:**
+- K8s Deployment + HPA manifests.
+- Liveness/readiness probes (`/actuator/health/liveness`, `/actuator/health/readiness`).
+- Flyway as initContainer in K8s.
+- Rollback drill.
 
 Scope:
 - Run containers as non-root user.
@@ -1558,6 +1690,10 @@ Log search tool:
 ## 24. Update Log
 
 - 2026-05-14: Fixed `docker-compose.yml` environment interpolation for `MESSAGE_CRYPTO_KEY_BASE64` by changing `${MESSAGE_CRYPTO_KEY_BASE64:}` to Docker Compose compatible `${MESSAGE_CRYPTO_KEY_BASE64:-}`. This unblocks `docker compose ps` and clean rebuild/start after removing images and volumes.
+- 2026-05-15 (round 1): P3 migrations — V15 (participants + routing_rules seed), V16 (6 performance indexes), V17 (api_keys: key_prefix, expires_at, SHA-256 key_value). P4 API key hardening — ApiKeyHashUtil, ApiKeyAuthFilter (hash+expiry), ApiKeyEntity, ApiKeyService, ApiKeyController, SecurityConfig updated. XXE protection confirmed in Acmt023XmlParser and Pacs008InboundParser.
+- 2026-05-15 (round 2): P2 95% — ProductionDemoKeyDisableService (@Profile("prod") ApplicationRunner, disables demo keys by name+prefix, no migration needed), .env in .gitignore confirmed. P3 65% — scripts/init-db-users.sh (switching_app DML-only, switching_flyway ALL), docker-compose updated (mounts init script, app=switching_app, Flyway=switching_flyway, separate passwords), application.yml FLYWAY_URL/USERNAME/PASSWORD env vars with nested fallback. P4 40% — MaskingUtil (maskAccount last-4, maskSensitive), XML body 1MB (server.tomcat.max-http-form-post-size).
+- 2026-05-15 (round 4): P6 30% — `micrometer-registry-prometheus` added to pom.xml; `/actuator/prometheus` exposed (staging: main port, prod: `${MANAGEMENT_PORT:9090}` separate management port); `logstash-logback-encoder` 8.0 added; `logback-spring.xml` created (text format for dev, JSON LogstashEncoder for staging/prod with ShortenedThrowableConverter rootCauseFirst). P5 55% — confirmed `OUTBOX_MANUAL_RETRY_REQUESTED` and `OUTBOX_EVENT_MARKED_REVIEWED` audit events already present in OutboxManualRetryService and OperationsOutboxMarkReviewedService. All 60/60 tests PASS.
+- 2026-05-15 (round 3): Bug fix — ParticipantType enum renamed to DIRECT/INDIRECT (was BANK/SWITCHING/SERVICE_PROVIDER, mismatching V15 DB seed values; caused silent 500 on all participant/routing/ISO endpoints); GlobalExceptionHandler.handleGenericException() adds log.error() to surface swallowed exceptions; V19 compensating migration fixes existing DB rows with old enum values; V18 drops duplicate idx_outbox_events_status. P5 35% — exponential backoff (30s/2min/10min) + next_retry_at entity field + findPendingBatch filter + OutboxDispatchWorker graceful shutdown (volatile flag + @PreDestroy). P7 25% — server.shutdown:graceful + timeout-per-shutdown-phase:30s. P4 45% — creditorAccount masked in CreateTransferService TRANSFER_VALIDATE_REQUEST + TRANSFER_CREATED audit events. Test fix — TC-103–107 ISO XML tests switched to BANK_B_KEY (BANK_B→BANK_A via ROUTE_BANK_B_TO_BANK_A_PACS008) to avoid BANK_A_KEY rate-limit exhaustion. 60/60 Maven tests PASS.
 
 ---
 
@@ -1573,7 +1709,14 @@ Log search tool:
 | Operations trace (MDC + log.error) | `src/main/java/com/example/switching/operations/service/OperationsTransferTraceService.java` |
 | Global error handler | `src/main/java/com/example/switching/common/exception/GlobalExceptionHandler.java` |
 | Error catalog | `src/main/java/com/example/switching/common/error/ErrorCatalog.java` |
-| DB migrations | `src/main/resources/db/migration/V1–V13__*.sql` |
+| DB migrations | `src/main/resources/db/migration/V1–V19__*.sql` |
+| API key hash util | `src/main/java/com/example/switching/security/util/ApiKeyHashUtil.java` |
+| API key service | `src/main/java/com/example/switching/security/service/ApiKeyService.java` |
+| API key controller | `src/main/java/com/example/switching/security/controller/ApiKeyController.java` |
+| API key auth filter | `src/main/java/com/example/switching/security/filter/ApiKeyAuthFilter.java` |
+| Demo key prod disable | `src/main/java/com/example/switching/security/service/ProductionDemoKeyDisableService.java` |
+| Account masking util | `src/main/java/com/example/switching/common/util/MaskingUtil.java` |
+| DB user init script | `scripts/init-db-users.sh` |
 | Test application config | `src/test/resources/application-test.yml` |
 | Main application config | `src/main/resources/application.yml` |
 | Full transfer flow test | `src/test/java/com/example/switching/transfer/FullTransferFlowIntegrationTest.java` |

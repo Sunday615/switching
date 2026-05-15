@@ -39,6 +39,9 @@ public class OutboxEventEntity {
     @Column(name = "retry_count")
     private Integer retryCount;
 
+    @Column(name = "next_retry_at")
+    private LocalDateTime nextRetryAt;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -87,6 +90,14 @@ public class OutboxEventEntity {
 
     public void setRetryCount(Integer retryCount) {
         this.retryCount = retryCount;
+    }
+
+    public LocalDateTime getNextRetryAt() {
+        return nextRetryAt;
+    }
+
+    public void setNextRetryAt(LocalDateTime nextRetryAt) {
+        this.nextRetryAt = nextRetryAt;
     }
 
     public LocalDateTime getCreatedAt() {

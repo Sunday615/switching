@@ -35,8 +35,13 @@ import com.example.switching.transfer.exception.TransferNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+        private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
         @ExceptionHandler(MethodArgumentNotValidException.class)
         public ResponseEntity<ApiErrorResponse> handleMethodArgumentNotValid(
@@ -169,6 +174,7 @@ public class GlobalExceptionHandler {
                         Exception ex,
                         HttpServletRequest request) {
 
+                log.error("Unhandled exception on {} {}", request.getMethod(), request.getRequestURI(), ex);
                 return buildResponse(
                                 ErrorCatalog.SYS_001,
                                 "Internal server error",

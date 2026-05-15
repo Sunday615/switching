@@ -72,6 +72,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/operations/**").hasAnyRole("OPS", "ADMIN")
                         .requestMatchers("/api/outbox-events/**").hasAnyRole("OPS", "ADMIN")
 
+                        // ── ADMIN only — API key management ──────────────────────
+                        .requestMatchers("/api/admin/api-keys/**").hasRole("ADMIN")
+
                         // ── ADMIN only — configuration management ─────────────────
                         .requestMatchers(HttpMethod.POST,  "/api/participants").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/participants/**").hasRole("ADMIN")

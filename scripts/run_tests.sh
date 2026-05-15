@@ -3,11 +3,25 @@
 #  Switching API — Full Automated Test Runner
 #
 #  Usage:
-#    ./scripts/run_tests.sh
+#    ./scripts/run_tests.sh                          # run against localhost:8080
 #    BASE_URL=http://localhost:8080 ./scripts/run_tests.sh
+#    ./scripts/run_tests.sh --wait                   # wait up to 60s for app to start
+#    ./scripts/run_tests.sh --wait --timeout 120     # custom wait timeout (seconds)
 #
 #  Requires: curl, jq
 # =============================================================================
+
+# ── Argument parsing ──────────────────────────────────────────────────────────
+WAIT_FOR_APP=false
+WAIT_TIMEOUT=60
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --wait|-w)       WAIT_FOR_APP=true; shift ;;
+    --timeout|-t)    WAIT_TIMEOUT="$2"; shift 2 ;;
+    *)               shift ;;   # ignore unknown flags (e.g. -d passed by mistake)
+  esac
+done
 
 # ── Dependencies check ───────────────────────────────────────────────────────
 for cmd in curl jq; do
@@ -219,13 +233,33 @@ cleanup() {
 trap cleanup EXIT
 
 # ── Connectivity pre-check ───────────────────────────────────────────────────
-HEALTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$BASE_URL/actuator/health" 2>/dev/null)
-if [ -z "$HEALTH_CODE" ] || [ "$HEALTH_CODE" = "000" ]; then
-  echo ""
-  echo -e "  ${RED}${BOLD}ERROR: Cannot reach $BASE_URL — is the server running?${NC}"
-  echo -e "  ${DIM}Tip: set -a && source .env && set +a && ./mvnw spring-boot:run > /tmp/app.log 2>&1 &${NC}"
-  echo ""
-  exit 1
+if [ "$WAIT_FOR_APP" = true ]; then
+  echo -e "  ${CYAN}Waiting for $BASE_URL to be ready (timeout: ${WAIT_TIMEOUT}s)...${NC}"
+  WAITED=0
+  while true; do
+    HEALTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$BASE_URL/actuator/health" 2>/dev/null)
+    if [ "$HEALTH_CODE" = "200" ]; then
+      echo -e "  ${GREEN}✔ App is ready (${WAITED}s)${NC}"
+      break
+    fi
+    if [ "$WAITED" -ge "$WAIT_TIMEOUT" ]; then
+      echo -e "  ${RED}${BOLD}ERROR: App not ready after ${WAIT_TIMEOUT}s — giving up.${NC}"
+      echo -e "  ${DIM}Check logs: docker logs switching-app --tail 50${NC}"
+      exit 1
+    fi
+    sleep 2
+    WAITED=$((WAITED + 2))
+  done
+else
+  HEALTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$BASE_URL/actuator/health" 2>/dev/null)
+  if [ -z "$HEALTH_CODE" ] || [ "$HEALTH_CODE" = "000" ]; then
+    echo ""
+    echo -e "  ${RED}${BOLD}ERROR: Cannot reach $BASE_URL — is the server running?${NC}"
+    echo -e "  ${DIM}Tip: docker compose up -d  then  ./scripts/run_tests.sh --wait${NC}"
+    echo -e "  ${DIM}  or: set -a && source .env && set +a && ./mvnw spring-boot:run > /tmp/app.log 2>&1 &${NC}"
+    echo ""
+    exit 1
+  fi
 fi
 
 # =============================================================================
@@ -765,7 +799,7 @@ do_curl -X POST "$BASE_URL/api/iso20022/pacs008" \
   --data-binary '<Document></Document>'
 check_status "TC-102" "OPS key on ISO endpoint → 403" "403"
 
-# TC-103 — Valid ACMT.023 smoke
+# TC-103 — Valid ACMT.023 smoke (BANK_B → BANK_A; uses BANK_B_KEY to avoid rate-limit exhaustion)
 ISO_ACMT_SUFFIX="AUTO-${RUN_ID}"
 ISO_XML="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:acmt.023.001.03\">
@@ -780,14 +814,14 @@ ISO_XML="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
         <Acct>
           <Id>
             <Othr>
-              <Id>${CREDITOR}</Id>
+              <Id>${DEBTOR}</Id>
             </Othr>
           </Id>
         </Acct>
       </PtyAndAcctId>
     </Vrfctn>
-    <DbtrAgt><FinInstnId><BICFI>${BANK_A}</BICFI></FinInstnId></DbtrAgt>
-    <CdtrAgt><FinInstnId><BICFI>${BANK_B}</BICFI></FinInstnId></CdtrAgt>
+    <DbtrAgt><FinInstnId><BICFI>${BANK_B}</BICFI></FinInstnId></DbtrAgt>
+    <CdtrAgt><FinInstnId><BICFI>${BANK_A}</BICFI></FinInstnId></CdtrAgt>
     <Amt Ccy=\"${CURRENCY}\">${AMOUNT}</Amt>
     <RmtInf><Ustrd>ISO automated test ${ISO_ACMT_SUFFIX}</Ustrd></RmtInf>
   </IdVrfctnReq>
@@ -795,8 +829,8 @@ ISO_XML="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 
 do_curl -X POST "$BASE_URL/api/iso20022/acmt023" \
   -H "Content-Type: application/xml" \
-  -H "X-API-Key: $BANK_A_KEY" \
-  -H "X-Bank-Code: $BANK_A" \
+  -H "X-API-Key: $BANK_B_KEY" \
+  -H "X-Bank-Code: $BANK_B" \
   --data-binary "$ISO_XML"
 check_status "TC-103" "Valid ACMT.023 ISO inquiry smoke → 200 (ACMT.024 XML response)" "200"
 ISO_INQUIRY_REF=$(xml_val "InquiryRef")
@@ -807,7 +841,7 @@ else
   fail "TC-103b" "ACMT.024 response missing MTCH or InquiryRef" "Vrfctn=${ISO_VERIFY_STATUS:-empty} inquiryRef=${ISO_INQUIRY_REF:-empty}"
 fi
 
-# TC-104 — Valid PACS.008 uses InquiryRef from TC-103
+# TC-104 — Valid PACS.008 uses InquiryRef from TC-103 (BANK_B → BANK_A)
 if [ -n "$ISO_INQUIRY_REF" ]; then
   ISO_PACS_SUFFIX="AUTO-PACS-${RUN_ID}"
   ISO_PACS008_XML="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
@@ -824,10 +858,10 @@ if [ -n "$ISO_INQUIRY_REF" ]; then
         <EndToEndId>E2E-${ISO_PACS_SUFFIX}</EndToEndId>
       </PmtId>
       <IntrBkSttlmAmt Ccy=\"${CURRENCY}\">${AMOUNT}</IntrBkSttlmAmt>
-      <DbtrAgt><FinInstnId><BICFI>${BANK_A}</BICFI></FinInstnId></DbtrAgt>
-      <CdtrAgt><FinInstnId><BICFI>${BANK_B}</BICFI></FinInstnId></CdtrAgt>
-      <DbtrAcct><Id><Othr><Id>${DEBTOR}</Id></Othr></Id></DbtrAcct>
-      <CdtrAcct><Id><Othr><Id>${CREDITOR}</Id></Othr></Id></CdtrAcct>
+      <DbtrAgt><FinInstnId><BICFI>${BANK_B}</BICFI></FinInstnId></DbtrAgt>
+      <CdtrAgt><FinInstnId><BICFI>${BANK_A}</BICFI></FinInstnId></CdtrAgt>
+      <DbtrAcct><Id><Othr><Id>${CREDITOR}</Id></Othr></Id></DbtrAcct>
+      <CdtrAcct><Id><Othr><Id>${DEBTOR}</Id></Othr></Id></CdtrAcct>
     </CdtTrfTxInf>
     <SplmtryData><PlcAndNm>LAO_SWITCHING_INQUIRY_REF</PlcAndNm><Envlp><InquiryRef>${ISO_INQUIRY_REF}</InquiryRef></Envlp></SplmtryData>
   </FIToFICstmrCdtTrf>
@@ -835,8 +869,8 @@ if [ -n "$ISO_INQUIRY_REF" ]; then
 
   do_curl -X POST "$BASE_URL/api/iso20022/pacs008" \
     -H "Content-Type: application/xml" \
-    -H "X-API-Key: $BANK_A_KEY" \
-    -H "X-Bank-Code: $BANK_A" \
+    -H "X-API-Key: $BANK_B_KEY" \
+    -H "X-Bank-Code: $BANK_B" \
     --data-binary "$ISO_PACS008_XML"
   check_status "TC-104" "Valid PACS.008 with InquiryRef → 200 (PACS.002 XML response)" "200"
   ISO_TX_STATUS=$(xml_val "TxSts")
@@ -851,12 +885,12 @@ else
   skip "TC-104b" "PACS.002 accepted check — skipped"
 fi
 
-# TC-105 — Repeat same PACS.008 should be idempotent and return same transfer ref
+# TC-105 — Repeat same PACS.008 should be idempotent and return same transfer ref (BANK_B → BANK_A)
 if [ -n "$ISO_INQUIRY_REF" ] && [ -n "$ISO_TRANSFER_REF" ]; then
   do_curl -X POST "$BASE_URL/api/iso20022/pacs008" \
     -H "Content-Type: application/xml" \
-    -H "X-API-Key: $BANK_A_KEY" \
-    -H "X-Bank-Code: $BANK_A" \
+    -H "X-API-Key: $BANK_B_KEY" \
+    -H "X-Bank-Code: $BANK_B" \
     --data-binary "$ISO_PACS008_XML"
   check_status "TC-105" "Repeat same PACS.008 → 200 idempotent response" "200"
   REPEAT_TX_STATUS=$(xml_val "TxSts")
@@ -881,18 +915,18 @@ if [ -n "$ISO_INQUIRY_REF" ]; then
     <CdtTrfTxInf>
       <PmtId><InstrId>INST-${ISO_USED_SUFFIX}</InstrId><EndToEndId>E2E-${ISO_USED_SUFFIX}</EndToEndId></PmtId>
       <IntrBkSttlmAmt Ccy=\"${CURRENCY}\">${AMOUNT}</IntrBkSttlmAmt>
-      <DbtrAgt><FinInstnId><BICFI>${BANK_A}</BICFI></FinInstnId></DbtrAgt>
-      <CdtrAgt><FinInstnId><BICFI>${BANK_B}</BICFI></FinInstnId></CdtrAgt>
-      <DbtrAcct><Id><Othr><Id>${DEBTOR}</Id></Othr></Id></DbtrAcct>
-      <CdtrAcct><Id><Othr><Id>${CREDITOR}</Id></Othr></Id></CdtrAcct>
+      <DbtrAgt><FinInstnId><BICFI>${BANK_B}</BICFI></FinInstnId></DbtrAgt>
+      <CdtrAgt><FinInstnId><BICFI>${BANK_A}</BICFI></FinInstnId></CdtrAgt>
+      <DbtrAcct><Id><Othr><Id>${CREDITOR}</Id></Othr></Id></DbtrAcct>
+      <CdtrAcct><Id><Othr><Id>${DEBTOR}</Id></Othr></Id></CdtrAcct>
     </CdtTrfTxInf>
     <SplmtryData><PlcAndNm>LAO_SWITCHING_INQUIRY_REF</PlcAndNm><Envlp><InquiryRef>${ISO_INQUIRY_REF}</InquiryRef></Envlp></SplmtryData>
   </FIToFICstmrCdtTrf>
 </Document>"
   do_curl -X POST "$BASE_URL/api/iso20022/pacs008" \
     -H "Content-Type: application/xml" \
-    -H "X-API-Key: $BANK_A_KEY" \
-    -H "X-Bank-Code: $BANK_A" \
+    -H "X-API-Key: $BANK_B_KEY" \
+    -H "X-Bank-Code: $BANK_B" \
     --data-binary "$ISO_USED_PACS008_XML"
   check_status "TC-106" "New PACS.008 with used InquiryRef → 200 rejection XML" "200"
   USED_TX_STATUS=$(xml_val "TxSts")
@@ -915,18 +949,18 @@ ISO_UNKNOWN_PACS008_XML="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
     <CdtTrfTxInf>
       <PmtId><InstrId>INST-${ISO_UNKNOWN_SUFFIX}</InstrId><EndToEndId>E2E-${ISO_UNKNOWN_SUFFIX}</EndToEndId></PmtId>
       <IntrBkSttlmAmt Ccy=\"${CURRENCY}\">${AMOUNT}</IntrBkSttlmAmt>
-      <DbtrAgt><FinInstnId><BICFI>${BANK_A}</BICFI></FinInstnId></DbtrAgt>
-      <CdtrAgt><FinInstnId><BICFI>${BANK_B}</BICFI></FinInstnId></CdtrAgt>
-      <DbtrAcct><Id><Othr><Id>${DEBTOR}</Id></Othr></Id></DbtrAcct>
-      <CdtrAcct><Id><Othr><Id>${CREDITOR}</Id></Othr></Id></CdtrAcct>
+      <DbtrAgt><FinInstnId><BICFI>${BANK_B}</BICFI></FinInstnId></DbtrAgt>
+      <CdtrAgt><FinInstnId><BICFI>${BANK_A}</BICFI></FinInstnId></CdtrAgt>
+      <DbtrAcct><Id><Othr><Id>${CREDITOR}</Id></Othr></Id></DbtrAcct>
+      <CdtrAcct><Id><Othr><Id>${DEBTOR}</Id></Othr></Id></CdtrAcct>
     </CdtTrfTxInf>
     <SplmtryData><PlcAndNm>LAO_SWITCHING_INQUIRY_REF</PlcAndNm><Envlp><InquiryRef>INQ-ISO-NOTFOUND-${RUN_ID}</InquiryRef></Envlp></SplmtryData>
   </FIToFICstmrCdtTrf>
 </Document>"
 do_curl -X POST "$BASE_URL/api/iso20022/pacs008" \
   -H "Content-Type: application/xml" \
-  -H "X-API-Key: $BANK_A_KEY" \
-  -H "X-Bank-Code: $BANK_A" \
+  -H "X-API-Key: $BANK_B_KEY" \
+  -H "X-Bank-Code: $BANK_B" \
   --data-binary "$ISO_UNKNOWN_PACS008_XML"
 check_status "TC-107" "PACS.008 with unknown InquiryRef → 200 rejection XML" "200"
 UNKNOWN_TX_STATUS=$(xml_val "TxSts")

@@ -337,11 +337,11 @@ class IsoInquiryFlowIntegrationTest extends AbstractIntegrationTest {
                     currency,
                     created_at,
                     updated_at
-                ) VALUES (?, ?, 'ACTIVE', 'BANK', 'LA', 'LAK', ?, ?)
+                ) VALUES (?, ?, 'ACTIVE', 'DIRECT', 'LA', 'LAK', ?, ?)
                 ON DUPLICATE KEY UPDATE
                     bank_name = VALUES(bank_name),
                     status = 'ACTIVE',
-                    participant_type = 'BANK',
+                    participant_type = 'DIRECT',
                     country = 'LA',
                     currency = 'LAK',
                     updated_at = VALUES(updated_at)

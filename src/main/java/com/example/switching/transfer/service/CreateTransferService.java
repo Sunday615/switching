@@ -17,6 +17,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 import com.example.switching.audit.service.AuditLogService;
+import com.example.switching.common.util.MaskingUtil;
 import com.example.switching.common.util.RequestHashUtil;
 import com.example.switching.common.util.TransferRefGenerator;
 import com.example.switching.idempotency.service.IdempotencyService;
@@ -173,7 +174,7 @@ public class CreateTransferService {
             validatedPayload.put("inquiryRef", inquiryRef);
             validatedPayload.put("sourceBank", normalizedSourceBank);
             validatedPayload.put("destinationBank", normalizedDestinationBank);
-            validatedPayload.put("creditorAccount", request.getCreditorAccount());
+            validatedPayload.put("creditorAccount", MaskingUtil.maskAccount(request.getCreditorAccount()));
             validatedPayload.put("amount", request.getAmount());
             validatedPayload.put("currency", request.getCurrency());
             validatedPayload.put("messageType", IsoMessageType.PACS_008.name());
@@ -253,7 +254,7 @@ public class CreateTransferService {
             createdPayload.put("status", TransferStatus.RECEIVED.name());
             createdPayload.put("sourceBank", normalizedSourceBank);
             createdPayload.put("destinationBank", normalizedDestinationBank);
-            createdPayload.put("creditorAccount", request.getCreditorAccount());
+            createdPayload.put("creditorAccount", MaskingUtil.maskAccount(request.getCreditorAccount()));
             createdPayload.put("amount", request.getAmount());
             createdPayload.put("currency", request.getCurrency());
             createdPayload.put("idempotencyKey", idempotencyKey);

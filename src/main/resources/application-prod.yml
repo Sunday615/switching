@@ -11,6 +11,14 @@ spring:
       hibernate:
         format_sql: false
 
+management:
+  server:
+    port: ${MANAGEMENT_PORT:9090}   # separate management port — never expose 9090 publicly
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
 switching:
   payment:
     json-initiation:

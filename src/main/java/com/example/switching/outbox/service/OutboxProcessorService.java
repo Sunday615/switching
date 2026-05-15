@@ -332,6 +332,7 @@ public class OutboxProcessorService {
 
         event.setRetryCount(nextRetryCount);
         event.setStatus(shouldRetry ? OutboxStatus.PENDING : OutboxStatus.FAILED);
+        event.setNextRetryAt(shouldRetry ? backoffDelay(nextRetryCount) : null);
         outboxEventRepository.save(event);
 
         Map<String, Object> payload = buildErrorPayload(
@@ -407,6 +408,14 @@ public class OutboxProcessorService {
 
     private int safeRetryCount(Integer retryCount) {
         return retryCount == null ? 0 : retryCount;
+    }
+
+    private LocalDateTime backoffDelay(int retryCount) {
+        return switch (retryCount) {
+            case 1 -> LocalDateTime.now().plusSeconds(30);
+            case 2 -> LocalDateTime.now().plusMinutes(2);
+            default -> LocalDateTime.now().plusMinutes(10);
+        };
     }
 
     private String trimMessage(String message) {

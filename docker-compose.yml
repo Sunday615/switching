@@ -6,6 +6,9 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: switching_db
+      # Passed into the init script so it can create least-privilege users
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-switching_app_password_change_me}
+      FLYWAY_PASSWORD: ${FLYWAY_PASSWORD:-switching_flyway_password_change_me}
     ports:
       - "3306:3306"
     command: >
@@ -13,6 +16,8 @@ services:
       --collation-server=utf8mb4_unicode_ci
     volumes:
       - mysql_data:/var/lib/mysql
+      # Runs once on first container start — creates switching_app and switching_flyway users
+      - ./scripts/init-db-users.sh:/docker-entrypoint-initdb.d/01-init-db-users.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 10s
@@ -29,9 +34,14 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: dev
+      # App datasource — least-privilege user (DML only)
       DB_URL: jdbc:mysql://mysql:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true
-      DB_USERNAME: root
-      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      DB_USERNAME: switching_app
+      DB_PASSWORD: ${DB_APP_PASSWORD:-switching_app_password_change_me}
+      # Flyway datasource — privileged user for schema migrations
+      FLYWAY_URL: jdbc:mysql://mysql:3306/switching_db?useSSL=false&serverTimezone=Asia/Bangkok&allowPublicKeyRetrieval=true
+      FLYWAY_USERNAME: switching_flyway
+      FLYWAY_PASSWORD: ${FLYWAY_PASSWORD:-switching_flyway_password_change_me}
       MESSAGE_CRYPTO_KEY_BASE64: ${MESSAGE_CRYPTO_KEY_BASE64:-}
       SERVER_PORT: 8080
     ports:

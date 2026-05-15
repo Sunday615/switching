@@ -8,6 +8,12 @@ spring:
   jpa:
     show-sql: false
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
 switching:
   payment:
     json-initiation:

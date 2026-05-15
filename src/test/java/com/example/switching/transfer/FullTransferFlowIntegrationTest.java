@@ -586,7 +586,7 @@ class FullTransferFlowIntegrationTest extends AbstractIntegrationTest {
                 INSERT INTO participants (
                     bank_code, bank_name, status, participant_type,
                     country, currency, created_at, updated_at
-                ) VALUES (?, ?, 'ACTIVE', 'BANK', 'LA', 'LAK', ?, ?)
+                ) VALUES (?, ?, 'ACTIVE', 'DIRECT', 'LA', 'LAK', ?, ?)
                 ON DUPLICATE KEY UPDATE
                     bank_name   = VALUES(bank_name),
                     status      = 'ACTIVE',
