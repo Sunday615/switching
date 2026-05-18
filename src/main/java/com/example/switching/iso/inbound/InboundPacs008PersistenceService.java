@@ -798,6 +798,15 @@ public class InboundPacs008PersistenceService {
             throw new IllegalStateException("Unable to mark InquiryRef as used: " + inquiryRef);
         }
 
+        // Record the ELIGIBLE → USED transition in inquiry_status_history for traceability
+        jdbcTemplate.update(
+                """
+                INSERT INTO inquiry_status_history (inquiry_ref, status, reason_code, created_at)
+                VALUES (?, 'USED', NULL, ?)
+                """,
+                inquiryRef, now
+        );
+
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("inquiryRef", inquiryRef);
         payload.put("transferRef", transferRef);

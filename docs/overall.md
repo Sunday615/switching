@@ -1,26 +1,59 @@
-# Switching API — Overall Project Reference
+# LaoFP Switching API — Overall Project Reference
 
 > **Purpose of this document:** Comprehensive reference for AI agents working on this codebase.
 > Covers architecture, domain model, APIs, DB schema, services, workers, config, tests, known issues, and next steps.
-> Last updated: 2026-05-15 — P5 55% (audit trail for manual retry/mark-reviewed confirmed, exponential backoff, graceful shutdown) + P6 30% (micrometer-registry-prometheus, logback-spring.xml JSON logging, management port separation in prod) + 60/60 tests PASS
+> **Target Specification:** LaoFP Master System Specification v1.0 (LaoFP-MASTER-001) — National Real-Time Payment Switching for Lao PDR.
+> Last updated: 2026-05-15 — P4 50% / P5 65% / P7 55% / 60/60 tests PASS. LaoFP spec alignment added (round 5).
 
 ---
 
 ## 1. Project Overview
 
-**Switching API** is a **Payment Switching System** — an intermediary that routes cross-bank money transfers following the **ISO 20022** financial messaging standard.
+**LaoFP Switching API** is the **National Real-Time Payment Switching Infrastructure for the Lao PDR** — the central hub that routes interbank and cross-wallet payments following the **ISO 20022** financial messaging standard, as defined in LaoFP Master Specification v1.0 (doc ID: LaoFP-MASTER-001).
+
+**Governing standard:** ISO 20022 | **Regulator:** Bank of the Lao PDR (BoL) | **Base URL:** `https://api.laofp.la/v1`
 
 ```
-Source Bank (BANK_A) ──► Switching API ──► Destination Bank (BANK_B)
-                         (this system)
+PSP Tier 1 (Banks)  ──┐
+PSP Tier 2 (NBFI)   ──┤                          ┌── PSP Tier 1 (Receiving Bank)
+PSP Tier 3 (Wallet) ──┼──► LaoFP Switching API ──┼── PSP Tier 3 (Wallet Operator)
+Merchants           ──┤    (this system)          └── Cross-border Corridors
+Cross-border        ──┘
 ```
 
-The system:
-- Receives ISO 20022 XML messages (PACS.008 credit transfer, ACMT.023 account inquiry)
-- Validates participants, resolves routing rules, creates a transfer record
-- Persists an outbox event, dispatches asynchronously to the destination bank's connector
-- Receives PACS.002 response, updates transfer status
-- Provides full tracing/audit of every transfer step
+**Target transaction types (LaoFP v1.0):**
+- Bank-to-Bank Transfer (pacs.008) — ✅ implemented (B2B only, foundation)
+- Bank-to-Wallet Transfer — 🚫 not yet
+- Wallet-to-Wallet Transfer — 🚫 not yet
+- Merchant / QR Code Payment (EMVCo) — 🚫 not yet
+- Bill Payment (Fetch-and-Pay) — 🚫 not yet
+- Cross-border Payment (Thailand/China/Vietnam/SWIFT corridors) — 🚫 not yet
+
+**LaoFP Architecture Modules (MOD-01 to MOD-21):**
+
+| Module | Name | Status |
+|--------|------|--------|
+| MOD-01 | API Gateway (TLS 1.3, mTLS, OAuth 2.0, rate limit) | 🟡 Partial (rate limit ✅; mTLS/OAuth ❌) |
+| MOD-02 | IAM (OAuth 2.0, mTLS, credential mgmt) | 🟡 Partial (API key ✅; OAuth/mTLS ❌) |
+| MOD-03 | Participant Directory (PSP registry, VPA, biller) | 🟡 Partial (PSP registry ✅; VPA/biller ❌) |
+| MOD-04 | Core Switching Engine (routing, orchestration, state machine) | 🟡 Partial (B2B pacs.008 ✅; other txn types ❌) |
+| MOD-05 | Transaction Validation (schema, business rules, duplicate) | 🟡 Partial (ISO XML ✅; full rule set ❌) |
+| MOD-06 | Account Lookup Service (VPA → masked account) | ❌ Not started |
+| MOD-07 | QR Code Service (static/dynamic EMVCo) | ❌ Not started |
+| MOD-08 | Bill Payment Service (biller integration) | ❌ Not started |
+| MOD-09 | Cross-border Gateway (FX, corridor routing) | ❌ Not started |
+| MOD-10 | Settlement Engine (DNS cycles, RTGS, camt.054) | ❌ Not started |
+| MOD-11 | Liquidity Manager (PSP pool balance, alerts) | ❌ Not started |
+| MOD-12 | Risk & Fraud Engine (real-time scoring, velocity) | ❌ Not started |
+| MOD-13 | AML / CFT Screening (sanctions, STR) | ❌ Not started |
+| MOD-14 | Notification Service (webhook, push, SMS) | ❌ Not started |
+| MOD-15 | Dispute & Refund Manager | ❌ Not started |
+| MOD-16 | Reconciliation & Reporting (camt.054, regulatory) | 🟡 Partial (ops queries ✅; camt.054 ❌) |
+| MOD-17 | Admin & Operations Portal | 🟡 Partial (REST APIs ✅; full UI ❌) |
+| MOD-18 | Monitoring & Alerting (APM, SLA dashboards) | 🟡 Partial (Prometheus ✅; Grafana/alerts ❌) |
+| MOD-19 | HSM / Key Management (FIPS 140-2 Level 3) | 🟡 Partial (AES/GCM in env ✅; HSM ❌) |
+| MOD-20 | Data Archival (7-year retention) | ❌ Not started |
+| MOD-21 | Force Push / FPRE (auto-retry engine) | 🟡 Partial (3-retry backoff ✅; auto-reversal/5-retry ❌) |
 
 ---
 
@@ -69,6 +102,7 @@ src/main/java/com/example/switching/
 │   └── util/RequestHashUtil.java         # SHA-256 hash of request for idempotency
 │              TransferRefGenerator.java  # Generates "TRX-{timestamp}-{random}" refs
 │              MaskingUtil.java           # maskAccount(String) — shows last 4 digits only
+│              AuditActorUtil.java        # currentActor() — reads SecurityContextHolder, fallback "SYSTEM"
 ├── connector/                             # Bank connector abstraction
 │   ├── BankConnector.java                 # Interface: dispatch(DispatchIsoMessageCommand) → BankIsoDispatchResponse
 │   ├── MockBankConnector.java             # MOCK implementation, reads connector_configs.force_reject
@@ -534,9 +568,10 @@ Legacy table still exists in schema. Not actively used after V8.
 | GET | `/api/operations/outbox-stuck` | List stuck PROCESSING events |
 | POST | `/api/operations/outbox-failures/retry-all` | Retry all failed events |
 | POST | `/api/operations/outbox-events/{id}/mark-reviewed` | Mark event as REVIEWED |
-| POST | `/api/operations/outbox-stuck/recover` | Manually recover stuck events |
+| POST | `/api/operations/outbox-stuck/recover-all` | Manually recover stuck events |
 | GET | `/api/operations/bank-status` | Bank status overview |
 | POST | `/api/operations/bank-onboarding` | Onboard new bank (creates participant + routing + connector) |
+| POST | `/api/operations/bank-onboarding/generate-routes` | Generate missing inbound/outbound routing rules for an ACTIVE bank |
 | GET | `/api/operations/connectors/health` | Connector health |
 | POST | `/api/operations/connectors/{connectorName}/test` | Test a connector |
 
@@ -792,11 +827,23 @@ Gauges query `OutboxEventRepository.countByStatus()` directly (already existed i
 | /actuator/health, /actuator/info | ✅ | ✅ | ✅ |
 | /api/admin/api-keys/** | ❌ | ❌ | ✅ |
 
-### Data Masking (Phase 4 🟡 — utility created, not yet applied to logs)
+### Data Masking (Phase 4 🟡 — applied to all audit payloads; OutboxProcessorService log statements still pending)
 - **`MaskingUtil`** — `common/util/MaskingUtil.java`
   - `maskAccount(String)` → shows last 4 digits: `"1234567890"` → `"******7890"`
   - `maskSensitive(String, int visibleSuffix)` → generic masker
-- **Pending:** apply to log statements in `CreateTransferService`, `OutboxProcessorService`, ISO parsers
+- **Applied (audit payloads):**
+  - `CreateTransferService` — `creditorAccount` in `TRANSFER_VALIDATE_REQUEST` + `TRANSFER_CREATED`
+  - `CreateInquiryService` — `creditorAccount` in `INQUIRY_VALIDATE_REQUEST` + `INQUIRY_CREATED`
+  - `InquiryLookupService` — `creditorAccount` in `INQUIRY_LOOKUP`
+  - `TransferInquiryService` — `debtorAccount` + `creditorAccount` in `TRANSFER_INQUIRY_LOOKUP`
+  - `IsoInquiryInboundService` — `creditorAccount` in both `auditAcmt023InboundReceived` and `auditInquiryCreated`
+- **Pending:** `OutboxProcessorService` log statements; ISO XML plain-text `<DbtrAcct>`/`<CdtrAcct>` in logs
+
+### Audit Actor (Phase 5 ✅)
+- **`AuditActorUtil`** — `common/util/AuditActorUtil.java`
+  - `currentActor()` reads `SecurityContextHolder.getContext().getAuthentication().getName()`
+  - Falls back to `"SYSTEM"` when no authentication present (scheduled workers: `OutboxDispatchWorker`, recovery workers)
+  - Applied in `OutboxManualRetryService` and `OperationsOutboxMarkReviewedService` — actor now reflects the actual API key name instead of hardcoded `"API"`
 
 ### Demo Key Auto-Disable (Phase 4 ✅)
 - **`ProductionDemoKeyDisableService`** — `@Profile("prod")` `ApplicationRunner`
@@ -965,7 +1012,7 @@ Non-root user: `addgroup --system switching && adduser --system --ingroup switch
 
 **Latest local run:** 2026-05-14
 
-**Current result:** `./mvnw test` passes with **46/46 tests PASS** on a clean checkout — no local MySQL required.
+**Current result:** `./mvnw test` passes with **60/60 tests PASS** on a clean checkout — no local MySQL required.
 
 - Integration tests use **Testcontainers** (MySQL 8.0 in Docker) via `AbstractIntegrationTest` singleton container.
 - `@DynamicPropertySource` overrides datasource and Flyway URLs at runtime — static `application-test.yml` values are only fallbacks.
@@ -998,7 +1045,7 @@ All integration tests:
 ### Test Hardening Done ✅
 
 - ✅ Replaced local MySQL/root dependency with Testcontainers (MySQL 8.0, singleton pattern).
-- ✅ `./mvnw test` passes from a clean checkout — 46/46 PASS.
+- ✅ `./mvnw test` passes from a clean checkout — 60/60 PASS.
 - ✅ CI pipeline created (`.github/workflows/ci.yml`) — tests run before package and Docker build.
 - ✅ Production Docker image is built only after tests pass (CI `needs:` chain).
 - [ ] Split fast unit tests from DB-backed integration tests into separate Maven Surefire groups.
@@ -1186,9 +1233,9 @@ Purpose:
 
 ## 20. Production Readiness Snapshot
 
-**Current assessment:** Not production-ready yet, but progressing steadily. P0–P2 complete. P3 at 65% (migrations + DB user scripts done; TLS and backup drill pending). P4 at 45% (API key hashing + management done; creditorAccount masked in audit logs; mTLS, full log masking, role expansion pending). P5 at 35% (exponential backoff + next_retry_at filter + graceful shutdown done; concurrent dispatch test + audit trail for manual actions pending). P7 at 25% (server.shutdown:graceful + lifecycle timeout done; K8s manifests, probes, rollback drill pending). Main remaining code blockers are full log masking and DB TLS config; infrastructure blockers are DB TLS certs and backup scheduling.
+**Current assessment:** Not production-ready yet, but progressing steadily. P0–P2 complete. P3 at 65% (migrations + DB user scripts done; TLS and backup drill pending). P4 at 50% (API key hashing + management done; MaskingUtil applied to all 5 audit-producing services; mTLS, OutboxProcessorService log masking, role expansion pending). P5 at 65% (exponential backoff, next_retry_at filter, graceful shutdown, manual-action audit trail, and actor-from-SecurityContext all done; concurrent dispatch test + backoff integration test still pending). P6 at 30% (Prometheus endpoint exposed, JSON logging configured; Grafana dashboards + alerts + log aggregation are infrastructure tasks). P7 at 55% (graceful shutdown config done; 6 K8s manifests created covering deployment/HPA/service/configmap/secret/namespace; rollback drill still pending). Main remaining code items: OutboxProcessorService log masking, concurrent dispatch tests; infrastructure items: DB TLS certs, backup, Prometheus/Grafana setup.
 
-**Estimated readiness:** 90%.
+**Estimated readiness:** 94%.
 
 ### Strengths
 
@@ -1198,7 +1245,7 @@ Purpose:
 - Central `GlobalExceptionHandler` and `ErrorCatalog`.
 - Request tracing: `X-Request-Id` header + MDC (`requestId`, `transferRef`, `inquiryRef`, `outboxEventId`).
 - Audit log model covers transfer/outbox/ISO/inquiry events.
-- Actuator exposure limited to `health,info`.
+- Actuator exposure: `health,info` on main port; `health,info,prometheus` on management port (staging: same port; prod: `${MANAGEMENT_PORT:9090}` separate).
 - **Phase 1 (roadmap) ✅:** API Key authentication with RBAC (ADMIN/OPS/BANK roles), AES/GCM message encryption mandatory in prod.
 - **Phase 2 (roadmap) ✅:** Micrometer counters/timers/gauges for transfers and outbox; MDC log correlation across all layers.
 - **Phase 3 (roadmap) ✅:** All outbox parameters configurable via env vars; rate limiting (Bucket4j token bucket, 429 response); near real-time dispatch (~50-200ms); routing cache auto-invalidation; JSON-path inquiry visible in transfer trace.
@@ -1206,9 +1253,10 @@ Purpose:
 - **Phase 1 (prod roadmap) ✅:** Testcontainers migration (60/60 PASS, no local MySQL), CI pipeline (6 jobs, fail-fast), Dockerfile hardened (3-stage, non-root user, JVM flags), run.sh updated, TC-071 fix.
 - **Phase 2 (prod roadmap) ✅:** Spring profiles `dev`/`staging`/`prod`; `application-prod.yml` enforces no-default secrets at startup; `api-key.enabled` and `rate-limit.enabled` hardcoded `true` in prod; `ProductionStartupValidator` blocks insecure DB URL; `IsoMessageCryptoService` uses Spring `Environment` for profile detection.
 - **Phase 3 (prod roadmap) 🟡 In Progress (65%):** V15 seed (participants + routing_rules); V16 indexes (6); V17 api_keys hardening. `scripts/init-db-users.sh` creates `switching_app` (DML-only) + `switching_flyway` (DDL); docker-compose mounts init script + routes app/Flyway to separate users; `application.yml` adds `FLYWAY_URL/USERNAME/PASSWORD` env vars. DB TLS + backup still pending.
-- **Phase 4 (prod roadmap) 🟡 In Progress (45%):** API key SHA-256 hashing + expiry + management endpoints; XXE protection confirmed; `MaskingUtil.maskAccount()` created and applied to `creditorAccount` in `CreateTransferService` audit payloads; XML body capped at 1MB. Full log masking, mTLS, role expansion still pending.
-- **Phase 5 (prod roadmap) 🟡 In Progress (35%):** Exponential backoff (retry 1→+30s, retry 2→+2min, retry 3+→+10min) in `OutboxProcessorService.backoffDelay()`; `next_retry_at` set on retry, filtered in `OutboxEventRepository.findPendingBatch`; graceful shutdown via `volatile shuttingDown` + `@PreDestroy` in `OutboxDispatchWorker`. Concurrent dispatch test + audit trail for manual retry still pending.
-- **Phase 7 (prod roadmap) 🟡 In Progress (25%):** `server.shutdown: graceful` + `spring.lifecycle.timeout-per-shutdown-phase: 30s` configured in `application.yml`. K8s manifests, readiness/liveness probes, rollback drill still pending.
+- **Phase 4 (prod roadmap) 🟡 In Progress (50%):** API key SHA-256 hashing + expiry + management endpoints; XXE protection confirmed; `MaskingUtil.maskAccount()` applied to audit payloads in `CreateTransferService`, `CreateInquiryService`, `InquiryLookupService`, `TransferInquiryService`, `IsoInquiryInboundService`; XML body capped at 1MB. `OutboxProcessorService` log masking, mTLS, role expansion still pending.
+- **Phase 5 (prod roadmap) 🟡 In Progress (65%):** Exponential backoff (retry 1→+30s, retry 2→+2min, retry 3+→+10min); `next_retry_at` set on retry + filtered in `findPendingBatch`; graceful shutdown (`volatile shuttingDown` + `@PreDestroy`); manual-action audit trail (`OUTBOX_MANUAL_RETRY_REQUESTED`, `OUTBOX_EVENT_MARKED_REVIEWED`); `AuditActorUtil.currentActor()` reads SecurityContextHolder (fallback `"SYSTEM"` for workers) — actor no longer hardcoded `"API"`. Concurrent dispatch test + backoff integration test still pending.
+- **Phase 6 (prod roadmap) 🟡 In Progress (30%):** `micrometer-registry-prometheus` added; `/actuator/prometheus` exposed (staging: port 8080; prod: `${MANAGEMENT_PORT:9090}` separate from main API); `logback-spring.xml` — text format for dev, JSON (`LogstashEncoder` + `ShortenedThrowableConverter`) for staging/prod with all MDC fields auto-included. Prometheus server, Grafana dashboards, alerting, log aggregation are infrastructure tasks.
+- **Phase 7 (prod roadmap) 🟡 In Progress (55%):** `server.shutdown: graceful` + `spring.lifecycle.timeout-per-shutdown-phase: 30s` in `application.yml`. 6 K8s manifests created: `k8s/namespace.yaml`, `k8s/configmap.yaml`, `k8s/secret.yaml`, `k8s/deployment.yaml` (Flyway initContainer, RollingUpdate maxUnavailable:0/maxSurge:1, liveness+readiness+startup probes on management port 9090, terminationGracePeriodSeconds:60), `k8s/service.yaml` (ClusterIP 80→8080 + 9090 management), `k8s/hpa.yaml` (CPU 70%/Memory 80%, 2–8 pods, scaleDown stabilization 300s). Rollback drill still pending.
 
 ### Main Production Gaps
 
@@ -1222,14 +1270,146 @@ Purpose:
 - ~~Outbox retry had no backoff — events retried immediately~~ **Fixed ✅ exponential backoff 30s/2min/10min + next_retry_at filter**
 - ~~`OutboxDispatchWorker` did not handle shutdown signal~~ **Fixed ✅ volatile shuttingDown + @PreDestroy + server.shutdown:graceful**
 - Multi-instance outbox concurrent dispatch test still pending (→ Phase 5).
-- No Prometheus export or Grafana dashboards (→ Phase 6).
-- No alerts configured for outbox backlog, connector failures, or latency (→ Phase 6).
+- ~~No Prometheus metrics export~~ **Fixed ✅ micrometer-registry-prometheus + /actuator/prometheus (separate management port in prod)**
+- ~~No structured JSON logging~~ **Fixed ✅ logback-spring.xml JSON mode for staging/prod (logstash-logback-encoder)**
+- ~~Audit actor hardcoded as `"API"` in manual actions~~ **Fixed ✅ AuditActorUtil reads SecurityContextHolder; fallback "SYSTEM" for workers**
+- ~~No K8s manifests~~ **Fixed ✅ 6 manifests in `k8s/`: namespace, configmap, secret, deployment, service, hpa**
+- No Grafana dashboards or alerts (infrastructure tasks → Phase 6 remaining).
+- Log aggregation (Fluentd/Filebeat → Elasticsearch) not configured (infrastructure → Phase 6 remaining).
 
 ---
 
-## 21. Advanced Production Roadmap (8 Phases)
+## 21. LaoFP Compliance Gap Analysis
 
-This is the intended direction for the project: move from the current switching API prototype/staging base into an advanced production-grade payment switching platform, while supporting a small number of complete web portals instead of many fragmented applications.
+This section maps LaoFP Master Spec v1.0 requirements against current implementation.
+
+### 21.1 Authentication & Security (NFR-2.1 to 2.4)
+
+| LaoFP Requirement | Current State | Gap |
+|-------------------|--------------|-----|
+| TLS 1.3 + mTLS client cert for all PSP connections | API key only (no mTLS) | 🔴 Missing |
+| OAuth 2.0 / OpenID Connect for API authorisation | Custom API key | 🔴 Replace |
+| HMAC-SHA256 request signing (`X-Request-Signature` header) | None | 🔴 Missing |
+| `X-Participant-ID`, `X-Timestamp` headers | `X-API-Key`, `X-Bank-Code` | 🟡 Rename + add |
+| AES-256 at rest + FIPS 140-2 Level 3 HSM key management | AES/GCM with env var key | 🟡 Upgrade to HSM |
+| Annual VAPT | Not performed | 🔴 Process gap |
+
+### 21.2 FPRE (Force Push & Automatic Retry Engine) — MOD-21
+
+| LaoFP Requirement | Current State | Gap |
+|-------------------|--------------|-----|
+| 5 retries: 30s / 60s / 2m / 5m / 10m ±10% jitter | 3 retries: 30s / 2m / 10m (no jitter) | 🟡 Extend + add jitter |
+| `failureClass`: TRANSIENT / TRANSIENT_POOL / PERMANENT_BUSINESS / PERMANENT_COMPLIANCE / PERMANENT_EXPIRED / AMBIGUOUS | None — binary retry/no-retry | 🔴 Add classification |
+| `willRetry` boolean in all failure responses | Not in responses | 🔴 Add |
+| Auto-reversal after 5 failed attempts + pool hold release | None | 🔴 Missing |
+| PSP idempotency check: `GET /laofp/transactions/{txnId}/credit-status` | None (LaoFP calls PSP's endpoint) | 🔴 PSP-side requirement |
+| PSP auto-suspension ≥3 reversals to same PSP in 30 min | None | 🔴 Missing |
+| TRANSFER.PENDING / TRANSFER.RETRY_ATTEMPT / TRANSFER.MAX_RETRIES_REACHED / TRANSFER.REVERSED webhooks | None (no webhook system) | 🔴 Requires MOD-14 |
+| `resolvedByRetry`, `retryAttempt` in COMPLETED response | None | 🟡 Add fields |
+
+### 21.3 Transaction Types — MOD-04
+
+| Transaction Type | ISO Message | Current State | Gap |
+|-----------------|-------------|--------------|-----|
+| Bank-to-Bank Transfer | pacs.008 / pacs.002 | ✅ Implemented | Minor API alignment |
+| Account Lookup (VPA) | acmt.023 | 🟡 ISO inquiry only | Missing VPA directory, beneficiaryToken |
+| Bank-to-Wallet Transfer | pacs.008 → wallet credit | ❌ Not started | Full MOD-06 + pool-to-pool |
+| Wallet-to-Wallet Transfer | Internal ledger | ❌ Not started | Intra vs inter-operator routing |
+| Merchant / QR Payment | EMVCo QR + pacs.008 | ❌ Not started | Full MOD-07 |
+| Bill Payment | Custom (fetch + pay) | ❌ Not started | MOD-08 + biller registry |
+| Cross-border | pacs.008 → corridor | ❌ Not started | MOD-09 + FX + AML |
+| Bulk Transfer | pain.001 | ❌ Not started | Batch processing |
+
+### 21.4 Missing Modules (0% implemented)
+
+| Module | LaoFP Spec Section | Key Deliverables |
+|--------|-------------------|-----------------|
+| **VPA Directory** (MOD-06) | FR-1.1 to FR-1.4, B1 | `POST /v1/lookup/resolve`, VPA register/update/deregister, `beneficiaryToken` 5-min TTL |
+| **QR Code Service** (MOD-07) | FR-5.1 to FR-5.4, B6 | Static + dynamic QR (EMVCo), `/qr/generate/static`, `/qr/generate/dynamic`, `/qr/decode`, `/qr/pay`, CRC-16 checksum |
+| **Bill Payment** (MOD-08) | FR-6.1 to FR-6.3, B7 | Biller registry, bill fetch (`billId` 10-min TTL), `/bills/fetch`, `/bills/pay`, duplicate protection 24h window |
+| **Cross-border Gateway** (MOD-09) | FR-7.1 to FR-7.4, B8 | FX quote 30s rate lock, corridor routing (PromptPay/CNAPS/NAPAS/SWIFT), mandatory sanctions screening |
+| **Settlement Engine** (MOD-10) | FR-8.1 to FR-8.4, B10 | DNS 4 cycles/day, RTGS for >LAK 500M, camt.054 report, prefunded pool debit/credit per transaction |
+| **Liquidity Manager** (MOD-11) | FR-3.1, FR-3.3 | Real-time PSP pool balance, `LIQUIDITY.LOW_ALERT` at 120% minimum, `/settlement/balance` |
+| **Risk & Fraud Engine** (MOD-12) | A2.1 | Real-time fraud scoring per transaction, velocity checks, rule engine |
+| **AML/CFT Screening** (MOD-13) | FR-7.2, C1 | OFAC/UN/BoL sanctions screening <2s, STR auto-generation within 24h, cross-border >LAK 5M purpose + source-of-funds |
+| **Webhook / Notification** (MOD-14) | A7, B-all | Full event delivery (TRANSFER.*, QR.*, BILL.*, SETTLEMENT.*, DISPUTE.*, LIQUIDITY.*), retry on delivery failure |
+| **Dispute & Refund** (MOD-15) | FR-9.1 to FR-9.3, B9 | 90-day window, 6 dispute types, evidence exchange, auto-refund on RESOLVED_REFUND |
+| **Data Archival** (MOD-20) | NFR-3.4, C1 | 7-year immutable audit retention, cold storage, regulatory export |
+
+### 21.5 API Contract Alignment Needed
+
+| Area | Current | LaoFP Target |
+|------|---------|-------------|
+| URL prefix | `/api/*` | `/v1/*` |
+| Error code format | `REQ-001`, `INQ-001` | `LFP-1001`, `LFP-2001` |
+| Transaction ID | `transferRef` (TRX-xxx) | `txnId` (UUID) |
+| PSP identifier header | `X-Bank-Code` | `X-Participant-ID` |
+| Auth header | `X-API-Key` | `Authorization: Bearer <oauth2_token>` |
+| New required headers | — | `X-Request-Signature`, `X-Timestamp`, `X-Idempotency-Key` |
+| Transaction status enum | RECEIVED / SUCCESS / FAILED | INITIATED / VALIDATED / PROCESSING / PENDING / FAILED / COMPLETED / REVERSED / BLOCKED / EXPIRED / PERMANENTLY_FAILED |
+| Missing fields | — | `beneficiaryToken`, `purposeCode`, `settlementCycleId`, `willRetry`, `retryAttempt`, `resolvedByRetry`, `failureClass` |
+
+### 21.6 Performance Targets (NFR — Not Yet Validated)
+
+| Metric | LaoFP Target | Current Status |
+|--------|-------------|---------------|
+| Peak throughput | 2,000 TPS → 10,000 TPS | Not load-tested |
+| P95 end-to-end latency | < 5 seconds (transfers) | Not measured |
+| Account lookup latency | < 500 ms P95 | Not measured |
+| API availability SLA | 99.95% (< 4.4 hrs/year) | Not measured |
+| RTO (automated failover) | < 30 seconds | Not implemented |
+| RPO | 0 seconds for committed txns | Not validated |
+
+### 21.7 LaoFP Compliance Score
+
+| Category | Weight | Current Score |
+|----------|--------|--------------|
+| B2B Transfer (foundation) | High | ~65% |
+| FPRE completeness | High | ~30% |
+| Auth & mTLS | Critical | ~20% |
+| Settlement & Liquidity | Critical | 0% |
+| Webhooks & Notifications | High | 0% |
+| VPA Lookup | High | 5% |
+| QR / Bill / Cross-border | High | 0% |
+| AML / CFT / Compliance | Critical | 0% |
+| Dispute & Refund | Medium | 0% |
+| **Overall LaoFP Compliance** | | **~15–18%** |
+
+> The current codebase is a solid **foundation** for LaoFP. The ISO 20022 routing engine, outbox pattern, participant management, security baseline, and ops dashboard are production-quality building blocks. The remaining ~82% is new domain modules stacked on top.
+
+---
+
+## 22. Advanced Production Roadmap (LaoFP Phases)
+
+Target: evolve from the current switching API foundation into a **full LaoFP-compliant national payment switching platform** as defined in LaoFP Master Specification v1.0. Phases P0–P8 harden the existing foundation; Phases P9–P20 implement LaoFP-specific modules.
+
+**Foundation Phases (P0–P8): hardening the existing B2B core**
+
+**LaoFP Expansion Phases (P9–P20): new modules required by LaoFP spec**
+
+| Phase | Title | LaoFP Modules | Status |
+|-------|-------|--------------|--------|
+| P0 | Baseline Freeze | — | 🟢 Done |
+| P1 | Test & CI Gate | — | 🟢 Done |
+| P2 | Production Config | — | 🟢 Done |
+| P3 | DB & Migration Hardening | — | 🟡 65% |
+| P4 | Security Advanced (baseline) | MOD-02 partial | 🟡 50% |
+| P5 | Reliability & FPRE Foundation | MOD-21 partial | 🟡 65% |
+| P6 | Observability | MOD-18 partial | 🟡 30% |
+| P7 | Deployment & Runtime | MOD-01 partial | 🟡 55% |
+| P8 | Compliance & Business Readiness | MOD-16, MOD-20 | ⚪ 0% |
+| **P9** | **OAuth 2.0 + mTLS + Request Signing** | MOD-01, MOD-02 | ⚪ 0% |
+| **P10** | **FPRE Full Compliance** | MOD-21 | ⚪ 0% |
+| **P11** | **VPA / Account Lookup** | MOD-06, MOD-03 | ⚪ 0% |
+| **P12** | **Webhook & Notification Engine** | MOD-14 | ⚪ 0% |
+| **P13** | **Prefunded Pool & Liquidity** | MOD-11, MOD-10 partial | ⚪ 0% |
+| **P14** | **Settlement Engine (DNS + RTGS)** | MOD-10 | ⚪ 0% |
+| **P15** | **QR Code Service** | MOD-07 | ⚪ 0% |
+| **P16** | **Bill Payment Service** | MOD-08 | ⚪ 0% |
+| **P17** | **Cross-border Payment** | MOD-09 | ⚪ 0% |
+| **P18** | **Dispute & Refund Manager** | MOD-15 | ⚪ 0% |
+| **P19** | **AML / CFT & Risk Engine** | MOD-12, MOD-13 | ⚪ 0% |
+| **P20** | **Performance & Scale (2K→10K TPS)** | MOD-01, MOD-04 | ⚪ 0% |
 
 ### Phase 0 — Production Baseline Freeze
 **Status: 🟢 COMPLETE (2026-05-14)**
@@ -1330,7 +1510,7 @@ Exit criteria:
 - Hibernate validate and Flyway validate pass in each environment.
 
 ### Phase 4 — Security Advanced
-**Status: 🟡 In Progress (40%) — 2026-05-15**
+**Status: 🟡 In Progress (50%) — 2026-05-15**
 
 **Completed:**
 - `ApiKeyHashUtil` — `generate()` (sk-{64 hex}), `hash()` (SHA-256), `prefix()` (first 12 chars).
@@ -1342,11 +1522,12 @@ Exit criteria:
 - XXE protection confirmed: both XML parsers have `FEATURE_SECURE_PROCESSING`, `disallow-doctype-decl`, external entities disabled.
 - `MaskingUtil` — `maskAccount(String)` (last 4 visible), `maskSensitive(String, int)`.
 - XML body size capped at 1MB via `server.tomcat.max-http-form-post-size`.
+- `MaskingUtil.maskAccount()` applied to all audit payloads: `CreateTransferService` (creditorAccount), `CreateInquiryService` (creditorAccount), `InquiryLookupService` (creditorAccount), `TransferInquiryService` (debtorAccount + creditorAccount), `IsoInquiryInboundService` (creditorAccount in both audit methods).
 
 **Remaining:**
-- Apply `MaskingUtil.maskAccount()` to all log statements with account numbers (`CreateTransferService`, `OutboxProcessorService`, ISO parsers).
+- Apply `MaskingUtil.maskAccount()` to `OutboxProcessorService` log statements.
+- ISO XML `<DbtrAcct>`/`<CdtrAcct>` masking in log payloads.
 - mTLS for bank-facing ISO endpoints.
-- Audit log `payload` masking at write time.
 - Role expansion (BANK_ADMIN, OPS_READ/WRITE, FINANCE, etc.).
 
 Goal: bank/payment-grade security.
@@ -1383,7 +1564,7 @@ Exit criteria:
 - Security review checklist passes.
 
 ### Phase 5 — Reliability & Outbox Advanced
-**Status: 🟡 In Progress (35%) — 2026-05-15**
+**Status: 🟡 In Progress (65%) — 2026-05-15**
 
 Goal: no duplicate dispatch, no lost event, recoverable failures.
 
@@ -1393,10 +1574,12 @@ Goal: no duplicate dispatch, no lost event, recoverable failures.
 - `OutboxEventEntity.nextRetryAt` field added (maps to V10's existing `next_retry_at DATETIME(3)` column).
 - `OutboxEventRepository.findPendingBatch` JPQL query filters: `nextRetryAt IS NULL OR nextRetryAt <= :now`.
 - `OutboxDispatchWorker` graceful shutdown: `volatile boolean shuttingDown`, `@PreDestroy onShutdown()`, guards in both `onOutboxCreated` and `processPendingEvents` (including mid-batch check).
+- `OUTBOX_MANUAL_RETRY_REQUESTED` audit event confirmed in `OutboxManualRetryService` — includes outboxEventId, transferRef, previousStatus, retryCount, manualAction=true.
+- `OUTBOX_EVENT_MARKED_REVIEWED` audit event confirmed in `OperationsOutboxMarkReviewedService` — includes outboxEventId, transferRef, reason, reviewedBy, reviewedAt.
+- `AuditActorUtil.currentActor()` — reads `SecurityContextHolder`, returns API key name (e.g. `"sk-ops-..."` prefix) when authenticated, falls back to `"SYSTEM"` for unauthenticated workers. Replaces hardcoded `"API"` in `OutboxManualRetryService` and `OperationsOutboxMarkReviewedService`.
 
 **Remaining:**
 - Concurrency test: 2 app instances compete for same outbox event → only 1 wins.
-- `OUTBOX_MANUAL_RETRY` and `OUTBOX_MARK_REVIEWED` audit events written on manual actions.
 - Backoff integration test: retried event is not picked up until `next_retry_at`.
 - Concurrent idempotency tests.
 
@@ -1419,8 +1602,21 @@ Exit criteria:
 - Idempotency holds under concurrent requests.
 
 ### Phase 6 — Observability & Operations
+**Status: 🟡 In Progress (30%) — 2026-05-15**
 
 Goal: production incidents must be visible and diagnosable.
+
+**Completed:**
+- `micrometer-registry-prometheus` dependency added — all existing Micrometer counters/timers/gauges automatically available at `/actuator/prometheus`.
+- `/actuator/prometheus` exposed: staging → port 8080; prod → `${MANAGEMENT_PORT:9090}` (separate from main API port, never public-facing).
+- `logback-spring.xml` created: human-readable pattern format for `dev`/`test`; `LogstashEncoder` JSON with `ShortenedThrowableConverter` (rootCauseFirst) for `staging`/`prod`; all MDC fields auto-included.
+
+**Remaining (infrastructure):**
+- Prometheus server configured to scrape app.
+- Grafana dashboards (6 planned: API, Transfer, Outbox, ISO, Connector, DB/JVM).
+- Alerting rules (outbox backlog, stuck events, fail rate, latency).
+- Log aggregation (Fluentd/Filebeat → Elasticsearch/OpenSearch).
+- Runbooks for each critical alert.
 
 Scope:
 - Export metrics to Prometheus.
@@ -1444,7 +1640,7 @@ Exit criteria:
 - Dashboard covers day-to-day operations.
 
 ### Phase 7 — Deployment & Runtime Platform
-**Status: 🟡 In Progress (25%) — 2026-05-15**
+**Status: 🟡 In Progress (55%) — 2026-05-15**
 
 Goal: production deployment must be repeatable and reversible.
 
@@ -1452,12 +1648,18 @@ Goal: production deployment must be repeatable and reversible.
 - `server.shutdown: graceful` in `application.yml` — Spring drains HTTP requests before JVM shutdown.
 - `spring.lifecycle.timeout-per-shutdown-phase: 30s` in `application.yml`.
 - Non-root `switching` user in Dockerfile (Phase 1 deliverable, counts here too).
+- `k8s/namespace.yaml` — `switching` namespace.
+- `k8s/configmap.yaml` — non-secret env vars (SPRING_PROFILES_ACTIVE=prod, SERVER_PORT=8080, MANAGEMENT_PORT=9090, outbox intervals, rate limit config).
+- `k8s/secret.yaml` — secret template with `stringData` (DB_URL, DB_PASSWORD, FLYWAY creds, MESSAGE_CRYPTO_KEY_BASE64 — all `REPLACE_ME` placeholders).
+- `k8s/deployment.yaml` — 2 replicas, `RollingUpdate maxUnavailable:0 maxSurge:1`, Flyway `initContainer` before app pods, `terminationGracePeriodSeconds:60`, resource requests/limits (cpu 250m/1000m, mem 512Mi/1Gi), livenessProbe + readinessProbe + startupProbe all on management port 9090 (probes hit `/actuator/health/liveness` and `/actuator/health/readiness`), startupProbe allows 2 min max for cold start.
+- `k8s/service.yaml` — `ClusterIP` service: port 80→8080 (API), port 9090→9090 (management/Prometheus scrape).
+- `k8s/hpa.yaml` — `HorizontalPodAutoscaler`: CPU 70%, Memory 80%, min 2/max 8 pods, scaleDown stabilization 300s (prevents flapping).
 
 **Remaining:**
-- K8s Deployment + HPA manifests.
-- Liveness/readiness probes (`/actuator/health/liveness`, `/actuator/health/readiness`).
-- Flyway as initContainer in K8s.
-- Rollback drill.
+- Rollback procedure documented and drill completed.
+- Deploy tested in staging (zero-dropped-request rolling update under load).
+- Container image scan with Trivy.
+- Base image digest pinning.
 
 Scope:
 - Run containers as non-root user.
@@ -1500,7 +1702,213 @@ Exit criteria:
 
 ---
 
-## 22. Web Portal Target Architecture
+### Phase 9 — OAuth 2.0 + mTLS + Request Signing (LaoFP NFR-2.1 to 2.3)
+**Status: ⚪ Not Started**
+
+Goal: replace API key authentication with LaoFP-standard OAuth 2.0 + mTLS trust model.
+
+**Scope:**
+- Replace `X-API-Key` with `Authorization: Bearer <oauth2_token>` (OAuth 2.0 client credentials flow).
+- Add mTLS termination at API Gateway — validate client certificate against registered PSP cert per MOD-02.
+- Add `X-Request-Signature: HMAC-SHA256` over body + timestamp — reject requests with invalid or missing signature.
+- Add `X-Timestamp` header validation — reject requests older than ±30 seconds (replay protection).
+- Rename `X-Bank-Code` → `X-Participant-ID` (LaoFP participant ID format: `PSP-BCEL`, `PSP-LDBBANK`).
+- Add participant credential rotation: `POST /v1/participants/{pspId}/credentials/rotate`.
+- IP allowlist per participant (configured at API Gateway).
+- Migrate existing BANK role to PSP Tier 1/2/3 model.
+
+Exit criteria: all PSP calls require valid OAuth token + mTLS cert + HMAC signature.
+
+### Phase 10 — FPRE Full Compliance (LaoFP B11 / MOD-21)
+**Status: ⚪ Not Started**
+
+Goal: bring FPRE to full LaoFP spec compliance.
+
+**Scope:**
+- Extend retry schedule to **5 attempts**: 30s / 60s / 2m / 5m / 10m ±10% jitter (currently 3 attempts).
+- Add `failureClass` field to outbox events: `TRANSIENT` / `TRANSIENT_POOL` / `PERMANENT_BUSINESS` / `PERMANENT_COMPLIANCE` / `PERMANENT_EXPIRED` / `AMBIGUOUS`.
+- Add `willRetry` boolean in all PENDING/FAILED responses and webhooks.
+- Implement **auto-reversal** after 5 failed attempts: release pool hold, fire `TRANSFER.MAX_RETRIES_REACHED` + `TRANSFER.POOL_HOLD_RELEASED` + `TRANSFER.REVERSED` webhooks, sending PSP must re-credit customer within 2 business hours.
+- Implement **AMBIGUOUS flow**: before re-push, call `GET {pspBase}/laofp/transactions/{txnId}/credit-status` — if `creditApplied=true`, mark COMPLETED without re-push.
+- Implement **PSP auto-suspension**: if ≥3 auto-reversals hit same receiving PSP within 30 min → `PUT /participants/{pspId}/status { "status": "INBOUND_SUSPENDED" }` (automated).
+- Add `resolvedByRetry`, `retryAttempt` to completed transaction response.
+- New FPRE APIs: `GET /v1/transfers/{txnId}/retry-status`, `GET /v1/transfers/{txnId}/retry-history`, `GET /v1/transfers/pending`, `GET /v1/transfers/failed`, `GET /v1/fpre/health`.
+- Requires MOD-14 (webhooks) for event delivery.
+
+Exit criteria: FPRE state machine passes LaoFP Certification Test Suite CERT scenarios for retry/reversal.
+
+### Phase 11 — VPA / Account Lookup (LaoFP B1 / MOD-06 + MOD-03)
+**Status: ⚪ Not Started**
+
+Goal: implement LaoFP central VPA directory for beneficiary resolution before any payment.
+
+**Scope:**
+- VPA types: `MSISDN` / `NATIONAL_ID` / `EMAIL` / `QR_STATIC` / `MERCHANT_ID`.
+- `POST /v1/lookup/resolve` → returns `beneficiaryToken` (5-min TTL), `displayName`, `receivingPspId`, `accountType`.
+- `beneficiaryToken` passed to `/transfers/initiate` instead of raw account number.
+- VPA management: `POST /lookup/vpa/register`, `PUT /lookup/vpa/{vpaId}`, `DELETE /lookup/vpa/{vpaId}`, `GET /lookup/vpa/{vpaId}`.
+- Duplicate VPA rejection (same identifier active at multiple PSPs → 409).
+- Lookup rate limit: 100/min/PSP (LFP-5001 on exceed).
+- Response SLA: <500ms P95 (FR-1.2).
+- Masked account display (last 4 digits — existing `MaskingUtil` usable).
+- DB: `vpa_registrations` table (vpaId, vpaType, vpaValue, pspId, accountRef, isPrimary, status, expiresAt).
+
+Exit criteria: lookup resolves MSISDN → PSP + masked account in <500ms; beneficiaryToken accepted in transfer flow.
+
+### Phase 12 — Webhook & Notification Engine (LaoFP A7 / MOD-14)
+**Status: ⚪ Not Started**
+
+Goal: event-driven notification delivery to all PSPs for every transaction lifecycle event.
+
+**Scope:**
+- Webhook registration: `POST /v1/webhooks/register { "url": "...", "events": ["TRANSFER.*"] }`.
+- Event catalog (from LaoFP A7): `TRANSFER.COMPLETED`, `TRANSFER.FAILED`, `TRANSFER.PENDING`, `TRANSFER.RETRY_ATTEMPT`, `TRANSFER.MAX_RETRIES_REACHED`, `TRANSFER.REVERSING`, `TRANSFER.REVERSED`, `TRANSFER.EXPIRED`, `TRANSFER.BLOCKED`, `TRANSFER.POOL_HOLD_RELEASED`, `QR.PAYMENT.COMPLETED`, `BILL.PAYMENT.CONFIRMED`, `SETTLEMENT.CYCLE.COMPLETED`, `DISPUTE.STATUS_CHANGED`, `LIQUIDITY.LOW_ALERT`, `PARTICIPANT.STATUS_CHANGED`.
+- Delivery: HTTP POST to PSP-registered URL; retry on non-2xx; exponential backoff.
+- Delivery tracking: `GET /v1/notifications/{notifId}`.
+- Webhook test: `POST /v1/webhooks/{webhookId}/test`.
+- Outbox pattern for webhook delivery (reuse existing outbox infrastructure).
+
+Exit criteria: every transaction state change fires correct webhook to affected PSPs; delivery confirmed.
+
+### Phase 13 — Prefunded Pool & Liquidity Management (LaoFP FR-3.1 / MOD-11)
+**Status: ⚪ Not Started**
+
+Goal: every transaction atomically debits sending PSP pool and credits receiving PSP pool before routing.
+
+**Scope:**
+- `psp_pools` table: pspId, balance, minimumBalance, currency.
+- Atomic pool-to-pool ledger on every transaction initiation (fail with LFP-4001 if insufficient).
+- Pool hold on INITIATED → release on COMPLETED/REVERSED.
+- Wallet operator minimum float: LAK 100,000,000; `LIQUIDITY.LOW_ALERT` at 120%.
+- `GET /v1/settlement/balance` — real-time pool balance for calling PSP.
+- `POST /v1/settlement/liquidity/topup` — request top-up via BoL RTGS.
+- `GET /v1/settlement/positions` — net positions per PSP for current cycle.
+- Low-balance alert fires `LIQUIDITY.LOW_ALERT` webhook.
+
+Exit criteria: no transaction can route without confirmed pool balance; pool balance consistent with settlement cycles.
+
+### Phase 14 — Settlement Engine / DNS + RTGS (LaoFP FR-8.1 to FR-8.4 / MOD-10)
+**Status: ⚪ Not Started**
+
+Goal: implement 4-cycle DNS settlement and BoL RTGS interface.
+
+**Scope:**
+- 4 DNS cycles/day: 09:00, 12:00, 15:30, 20:00 ICT (cut-offs: 08:45, 11:45, 15:15, 19:45).
+- Each transaction tagged with `settlementCycleId`.
+- Net position computation per PSP pair at cycle close (<60s for 500K transactions).
+- RTGS bypass for transactions >LAK 500,000,000 (real-time gross, pacs.009 to BoL RTGS).
+- camt.054 report generated per PSP per cycle.
+- `GET /v1/settlement/cycles`, `GET /v1/settlement/cycle/{cycleId}/report` (camt.054 download).
+- Daily reconciliation: `GET /v1/reports/reconciliation/{date}` — available by 22:00.
+- Settlement status: `OPEN` → `CLOSING` → `COMPUTING` → `SETTLED`.
+- `SETTLEMENT.CYCLE.COMPLETED` webhook to all PSPs.
+
+Exit criteria: DNS cycles run on schedule; camt.054 delivered to each PSP after each cycle; RTGS high-value path confirmed.
+
+### Phase 15 — QR Code Service (LaoFP FR-5.1 to FR-5.4 / MOD-07)
+**Status: ⚪ Not Started**
+
+Goal: national QR standard (EMVCo-based) for merchant payments.
+
+**Scope:**
+- Static QR (reusable, no expiry) and Dynamic QR (per-transaction, amount pre-filled, single-use).
+- QR fields: `MerchantID`, `AcquiringPspId`, `Amount`, `TxnRef`, `Expiry`, `Checksum` (CRC-16).
+- `POST /v1/qr/generate/static`, `POST /v1/qr/generate/dynamic` → returns `qrString`, `qrImageBase64`, `expiresAt`.
+- `POST /v1/qr/decode` — validates QR payload, returns merchant info + amount.
+- `POST /v1/qr/pay` — submit QR payment (pool-to-pool: issuing PSP → acquiring PSP).
+- Merchant refund: `POST /v1/qr/refund` (within 30 days of original txn).
+- Duplicate dynamic QR protection: `LFP-QR-003` on same `TxnRef`.
+- QR expiry: `LFP-QR-001`.
+- Payment SLA: <10 seconds end-to-end (FR-5.3).
+
+Exit criteria: any LaoFP PSP app can pay any LaoFP-registered merchant via QR; refund flows work.
+
+### Phase 16 — Bill Payment Service (LaoFP FR-6.1 to FR-6.3 / MOD-08)
+**Status: ⚪ Not Started**
+
+Goal: standardised Fetch-and-Pay bill payment with biller registry.
+
+**Scope:**
+- Biller registry: `GET /v1/billers`, `GET /v1/billers/{billerId}`.
+- Bill fetch: `GET /v1/bills/fetch?billerId=&ref=` → `billId` valid 10 minutes.
+- Bill pay: `POST /v1/bills/pay { "billId": "...", "paymentAmount": "..." }`.
+- Duplicate bill payment blocked within 24-hour window (same `billerId` + `billRef`).
+- Biller integration: LaoFP forwards `BILL.PAYMENT_INSTRUCTION` to biller API; biller must ACK within 30s.
+- `BILL.PAYMENT.CONFIRMED` webhook on success.
+- FPRE integration: bill payment retries within 10-min bill token window; if expired → `EXPIRED`, PSP must re-fetch.
+
+Exit criteria: utility/government/telecom bill payment works end-to-end with receipt number returned.
+
+### Phase 17 — Cross-border Payment (LaoFP FR-7.1 to FR-7.4 / MOD-09)
+**Status: ⚪ Not Started**
+
+Goal: outbound remittances with real-time FX quote and corridor routing.
+
+**Scope:**
+- FX rate: `GET /v1/crossborder/fx-rates`, `POST /v1/crossborder/quote` (30-second rate lock).
+- Initiate: `POST /v1/crossborder/initiate { "quoteId": "...", "beneficiary": {...}, "purposeCode": "...", "sourceOfFunds": "..." }`.
+- Corridors: Thailand (PromptPay), China (CNAPS), Vietnam (NAPAS), SWIFT global.
+- Mandatory AML screening before routing (MOD-13 dependency).
+- Transfers >LAK 5,000,000: `purposeCode` + `sourceOfFunds` required (FR-7.3).
+- `GET /v1/crossborder/corridors` — list active corridors.
+- pacs.008 formatted per target corridor partner spec.
+
+Exit criteria: cross-border transfer completes for all 4 corridors; AML screen blocks sanctioned names.
+
+### Phase 18 — Dispute & Refund Manager (LaoFP FR-9.1 to FR-9.3 / MOD-15)
+**Status: ⚪ Not Started**
+
+Goal: full dispute lifecycle with automated refund on adjudication.
+
+**Scope:**
+- Dispute types: `NOT_RECEIVED`, `WRONG_AMOUNT`, `DUPLICATE_CHARGE`, `FRAUD`, `MERCHANT_DISPUTE`, `TECHNICAL_ERROR`.
+- 90-day dispute window (FR-9.1).
+- SLAs per type: `NOT_RECEIVED` 2 days, `WRONG_AMOUNT` 3 days, `FRAUD` 5 days, `TECHNICAL_ERROR` 1 day.
+- `POST /v1/disputes/raise`, `GET /v1/disputes/{disputeId}`, `PUT /v1/disputes/{disputeId}/respond`, `POST /v1/disputes/{disputeId}/resolve`.
+- Automated refund: `POST /v1/refunds/initiate` (merchant, within 30 days); on `RESOLVED_REFUND` adjudication.
+- No response by SLA → auto-ruled in favour of raising PSP.
+- `DISPUTE.STATUS_CHANGED` webhook.
+- Dispute records retained 7 years.
+
+Exit criteria: all 6 dispute types handled; auto-refund triggered on RESOLVED_REFUND; audit trail immutable.
+
+### Phase 19 — AML / CFT & Risk Engine (LaoFP A3.7, A4.2, C1 / MOD-12 + MOD-13)
+**Status: ⚪ Not Started**
+
+Goal: real-time sanctions screening and fraud detection for every transaction.
+
+**Scope:**
+- Sanctions screening against BoL, OFAC, and UN lists (<2s for clean names).
+- STR auto-generation and submission to BoL FIU within 24 hours of a sanctions hit.
+- Blocked transaction: `LFP-SANCTIONS-001`, `TRANSFER.BLOCKED` webhook.
+- Real-time fraud scoring per transaction (MOD-12): velocity checks, rule engine, anomaly detection.
+- BoL read-only access to real-time transaction monitoring dashboard.
+- 7-year immutable audit log (MOD-20): cold storage, regulatory export.
+- Data residency: primary data within Lao PDR; DR in ASEAN-region cloud zones.
+- PCI-DSS compliance for card-adjacent flows.
+
+Exit criteria: known sanctioned name blocked within 2s; STR filed automatically; BoL dashboard access verified.
+
+### Phase 20 — Performance & Scale (LaoFP NFR-4.1)
+**Status: ⚪ Not Started**
+
+Goal: validate and achieve LaoFP NFR performance targets.
+
+**Scope:**
+- Load test suite (k6 or Gatling): 2,000 TPS sustained, 10,000 TPS burst.
+- P95 end-to-end latency target: <5 seconds for transfers, <10 seconds for QR, <500ms for VPA lookup.
+- 99.95% availability SLA (< 4.4 hours downtime/year).
+- RTO < 30 seconds (automated failover).
+- RPO = 0 for committed transactions (synchronous DB writes before response).
+- Multi-zone HA cloud deployment.
+- Horizontal pod autoscaling validated under peak load.
+- Certification: pass LaoFP Certification Test Suite (CERT-001 to CERT-112, 100% pass rate required).
+
+Exit criteria: load test passes at 2,000 TPS P95 <5s; failover drill confirms RTO <30s; CERT suite 100% pass.
+
+---
+
+## 23. Web Portal Target Architecture
 
 Direction: support production operations with the fewest portals possible while still covering all roles. Do not create 11 separate portals. Build 4 primary business web apps and use external BI/observability/log tools for analytics and technical operations.
 
@@ -1665,7 +2073,7 @@ Log search tool:
 
 ---
 
-## 23. Phase 0 Deliverables Summary
+## 24. Phase 0 Deliverables Summary
 
 | Deliverable | File | Status |
 |-------------|------|--------|
@@ -1687,17 +2095,19 @@ Log search tool:
 
 ---
 
-## 24. Update Log
+## 25. Update Log
 
 - 2026-05-14: Fixed `docker-compose.yml` environment interpolation for `MESSAGE_CRYPTO_KEY_BASE64` by changing `${MESSAGE_CRYPTO_KEY_BASE64:}` to Docker Compose compatible `${MESSAGE_CRYPTO_KEY_BASE64:-}`. This unblocks `docker compose ps` and clean rebuild/start after removing images and volumes.
 - 2026-05-15 (round 1): P3 migrations — V15 (participants + routing_rules seed), V16 (6 performance indexes), V17 (api_keys: key_prefix, expires_at, SHA-256 key_value). P4 API key hardening — ApiKeyHashUtil, ApiKeyAuthFilter (hash+expiry), ApiKeyEntity, ApiKeyService, ApiKeyController, SecurityConfig updated. XXE protection confirmed in Acmt023XmlParser and Pacs008InboundParser.
 - 2026-05-15 (round 2): P2 95% — ProductionDemoKeyDisableService (@Profile("prod") ApplicationRunner, disables demo keys by name+prefix, no migration needed), .env in .gitignore confirmed. P3 65% — scripts/init-db-users.sh (switching_app DML-only, switching_flyway ALL), docker-compose updated (mounts init script, app=switching_app, Flyway=switching_flyway, separate passwords), application.yml FLYWAY_URL/USERNAME/PASSWORD env vars with nested fallback. P4 40% — MaskingUtil (maskAccount last-4, maskSensitive), XML body 1MB (server.tomcat.max-http-form-post-size).
-- 2026-05-15 (round 4): P6 30% — `micrometer-registry-prometheus` added to pom.xml; `/actuator/prometheus` exposed (staging: main port, prod: `${MANAGEMENT_PORT:9090}` separate management port); `logstash-logback-encoder` 8.0 added; `logback-spring.xml` created (text format for dev, JSON LogstashEncoder for staging/prod with ShortenedThrowableConverter rootCauseFirst). P5 55% — confirmed `OUTBOX_MANUAL_RETRY_REQUESTED` and `OUTBOX_EVENT_MARKED_REVIEWED` audit events already present in OutboxManualRetryService and OperationsOutboxMarkReviewedService. All 60/60 tests PASS.
 - 2026-05-15 (round 3): Bug fix — ParticipantType enum renamed to DIRECT/INDIRECT (was BANK/SWITCHING/SERVICE_PROVIDER, mismatching V15 DB seed values; caused silent 500 on all participant/routing/ISO endpoints); GlobalExceptionHandler.handleGenericException() adds log.error() to surface swallowed exceptions; V19 compensating migration fixes existing DB rows with old enum values; V18 drops duplicate idx_outbox_events_status. P5 35% — exponential backoff (30s/2min/10min) + next_retry_at entity field + findPendingBatch filter + OutboxDispatchWorker graceful shutdown (volatile flag + @PreDestroy). P7 25% — server.shutdown:graceful + timeout-per-shutdown-phase:30s. P4 45% — creditorAccount masked in CreateTransferService TRANSFER_VALIDATE_REQUEST + TRANSFER_CREATED audit events. Test fix — TC-103–107 ISO XML tests switched to BANK_B_KEY (BANK_B→BANK_A via ROUTE_BANK_B_TO_BANK_A_PACS008) to avoid BANK_A_KEY rate-limit exhaustion. 60/60 Maven tests PASS.
+- 2026-05-15 (round 4): P5 55% — confirmed `OUTBOX_MANUAL_RETRY_REQUESTED` and `OUTBOX_EVENT_MARKED_REVIEWED` audit events already present in OutboxManualRetryService and OperationsOutboxMarkReviewedService. P6 30% — `micrometer-registry-prometheus` added to pom.xml (Spring Boot BOM managed); `/actuator/prometheus` exposed (staging: main port 8080, prod: `${MANAGEMENT_PORT:9090}` separate to protect public API); `logstash-logback-encoder` 8.0 added; `logback-spring.xml` created (text pattern for default/dev/test, JSON LogstashEncoder + ShortenedThrowableConverter rootCauseFirst for staging/prod, all MDC fields auto-included). 60/60 tests PASS.
+- 2026-05-15 (round 6): LaoFP alignment — project renamed to LaoFP Switching API; Section 1 updated to reflect LaoFP Master Spec v1.0 target with MOD-01 to MOD-21 module table and transaction type status; new Section 21 LaoFP Compliance Gap Analysis added (auth stack, FPRE, transaction types, missing modules, API contract alignment, performance targets, compliance score ~15–18%); roadmap expanded from 8 phases to 20 phases (P9–P20 cover all LaoFP expansion modules: OAuth/mTLS, FPRE full, VPA, webhooks, pool/liquidity, settlement/DNS/RTGS, QR, bill pay, cross-border, dispute, AML/CFT, TPS scale).
+- 2026-05-15 (round 5): P4 50% — MaskingUtil.maskAccount() applied to audit payloads in CreateInquiryService (creditorAccount), InquiryLookupService (creditorAccount), TransferInquiryService (debtorAccount + creditorAccount), IsoInquiryInboundService (creditorAccount in both audit methods). P5 65% — AuditActorUtil.currentActor() created (reads SecurityContextHolder, fallback "SYSTEM"); replaces hardcoded "API" in OutboxManualRetryService + OperationsOutboxMarkReviewedService. P7 55% — 6 K8s manifests created: k8s/namespace.yaml, k8s/configmap.yaml, k8s/secret.yaml, k8s/deployment.yaml (Flyway initContainer, RollingUpdate maxUnavailable:0/maxSurge:1, 3 probes on mgmt port 9090, startupProbe 24×5s=2min max), k8s/service.yaml (ClusterIP 80→8080 + 9090), k8s/hpa.yaml (CPU 70%/Memory 80%, 2–8 pods, scaleDown 300s). Container hardening [x] from Phase 1 (non-root + multi-stage).
 
 ---
 
-## 25. Quick Reference: File Locations
+## 26. Quick Reference: File Locations
 
 | Purpose | File |
 |---------|------|
@@ -1716,6 +2126,13 @@ Log search tool:
 | API key auth filter | `src/main/java/com/example/switching/security/filter/ApiKeyAuthFilter.java` |
 | Demo key prod disable | `src/main/java/com/example/switching/security/service/ProductionDemoKeyDisableService.java` |
 | Account masking util | `src/main/java/com/example/switching/common/util/MaskingUtil.java` |
+| Audit actor util | `src/main/java/com/example/switching/common/util/AuditActorUtil.java` |
+| K8s Deployment | `k8s/deployment.yaml` |
+| K8s HPA | `k8s/hpa.yaml` |
+| K8s Service | `k8s/service.yaml` |
+| K8s ConfigMap | `k8s/configmap.yaml` |
+| K8s Secret template | `k8s/secret.yaml` |
+| K8s Namespace | `k8s/namespace.yaml` |
 | DB user init script | `scripts/init-db-users.sh` |
 | Test application config | `src/test/resources/application-test.yml` |
 | Main application config | `src/main/resources/application.yml` |
@@ -1728,3 +2145,9 @@ Log search tool:
 | Outbox metrics + gauges | `src/main/java/com/example/switching/outbox/worker/OutboxDispatchWorker.java` |
 | Transfer counters + MDC | `src/main/java/com/example/switching/transfer/service/CreateTransferService.java` |
 | Dispatch timer + MDC | `src/main/java/com/example/switching/outbox/service/OutboxProcessorService.java` |
+| Logback config (JSON/text) | `src/main/resources/logback-spring.xml` |
+| Manual retry audit | `src/main/java/com/example/switching/outbox/service/OutboxManualRetryService.java` |
+| Mark-reviewed audit | `src/main/java/com/example/switching/operations/service/OperationsOutboxMarkReviewedService.java` |
+| Staging profile config | `src/main/resources/application-staging.yml` |
+| Prod profile config | `src/main/resources/application-prod.yml` |
+| Full E2E test script | `scripts/run_tests.sh` |

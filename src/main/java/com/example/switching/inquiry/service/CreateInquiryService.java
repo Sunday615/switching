@@ -23,6 +23,7 @@ import com.example.switching.inquiry.repository.InquiryStatusHistoryRepository;
 import com.example.switching.participant.entity.ParticipantEntity;
 import com.example.switching.participant.exception.ParticipantNotFoundException;
 import com.example.switching.participant.service.ParticipantService;
+import com.example.switching.common.util.MaskingUtil;
 import com.example.switching.transfer.exception.InquiryValidationException;
 
 @Service
@@ -143,7 +144,7 @@ public class CreateInquiryService {
             auditPayload.put("status", status.name());
             auditPayload.put("sourceBank", normalizedSourceBank);
             auditPayload.put("destinationBank", normalizedDestinationBank);
-            auditPayload.put("creditorAccount", request.getCreditorAccount());
+            auditPayload.put("creditorAccount", MaskingUtil.maskAccount(request.getCreditorAccount()));
             auditPayload.put("amount", request.getAmount());
             auditPayload.put("currency", request.getCurrency());
             auditPayload.put("accountFound", accountFound);

@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.example.switching.common.util.MaskingUtil;
 import com.example.switching.operations.dto.OperationsTransactionItemResponse;
 import com.example.switching.operations.dto.OperationsTransactionListResponse;
 
@@ -180,8 +181,8 @@ public class OperationsTransactionQueryService {
                 rs.getString("inquiry_ref"),
                 rs.getString("source_bank_code"),
                 rs.getString("destination_bank_code"),
-                rs.getString("source_account_no"),
-                rs.getString("destination_account_no"),
+                MaskingUtil.maskAccount(rs.getString("source_account_no")),
+                MaskingUtil.maskAccount(rs.getString("destination_account_no")),
                 rs.getBigDecimal("amount"),
                 rs.getString("currency"),
                 rs.getString("status"),

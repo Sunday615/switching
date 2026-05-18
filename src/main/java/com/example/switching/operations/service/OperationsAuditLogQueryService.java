@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.example.switching.common.util.MaskingUtil;
 import com.example.switching.operations.dto.OperationsAuditLogItemResponse;
 import com.example.switching.operations.dto.OperationsAuditLogListResponse;
 
@@ -190,7 +191,7 @@ public class OperationsAuditLogQueryService {
                 rs.getString("actor"),
                 null,   // channelId — audit_logs table has no channel_id column
                 toLocalDateTime(rs.getTimestamp("created_at")),
-                rs.getString("payload")
+                MaskingUtil.maskAccountFieldsInText(rs.getString("payload"))
         );
     }
 

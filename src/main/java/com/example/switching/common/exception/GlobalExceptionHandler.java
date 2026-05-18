@@ -28,6 +28,9 @@ import com.example.switching.participant.exception.ParticipantNotFoundException;
 import com.example.switching.participant.exception.ParticipantUnavailableException;
 import com.example.switching.routing.exception.RoutingRuleAlreadyExistsException;
 import com.example.switching.routing.exception.RoutingRuleNotFoundException;
+import com.example.switching.security.mtls.MtlsCertInvalidException;
+import com.example.switching.security.oauth.OAuthTokenInvalidException;
+import com.example.switching.security.signing.SignatureVerificationException;
 import com.example.switching.transfer.exception.InquiryAlreadyUsedException;
 import com.example.switching.transfer.exception.InquiryValidationException;
 import com.example.switching.transfer.exception.TransferNotFoundException;
@@ -335,6 +338,42 @@ public class GlobalExceptionHandler {
 
                 return buildResponse(
                                 ErrorCatalog.OUT_004,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(SignatureVerificationException.class)
+        public ResponseEntity<ApiErrorResponse> handleSignatureVerification(
+                        SignatureVerificationException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.LFP_2003,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(OAuthTokenInvalidException.class)
+        public ResponseEntity<ApiErrorResponse> handleOAuthTokenInvalid(
+                        OAuthTokenInvalidException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.LFP_2001,
+                                ex.getMessage(),
+                                request,
+                                null);
+        }
+
+        @ExceptionHandler(MtlsCertInvalidException.class)
+        public ResponseEntity<ApiErrorResponse> handleMtlsCertInvalid(
+                        MtlsCertInvalidException ex,
+                        HttpServletRequest request) {
+
+                return buildResponse(
+                                ErrorCatalog.LFP_2002,
                                 ex.getMessage(),
                                 request,
                                 null);

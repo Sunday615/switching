@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.example.switching.audit.service.AuditLogService;
+import com.example.switching.common.util.AuditActorUtil;
 import com.example.switching.operations.dto.OperationsGenerateRouteItemResponse;
 import com.example.switching.operations.dto.OperationsGenerateRoutesForBankRequest;
 import com.example.switching.operations.dto.OperationsGenerateRoutesForBankResponse;
@@ -23,7 +24,6 @@ public class OperationsGenerateRoutesForBankService {
     private static final String DEFAULT_MESSAGE_TYPE = "PACS_008";
     private static final String DEFAULT_MODE = "BOTH";
     private static final String ENTITY_TYPE = "ROUTING_RULE";
-    private static final String ACTOR = "API";
 
     private final JdbcTemplate jdbcTemplate;
     private final AuditLogService auditLogService;
@@ -334,7 +334,7 @@ public class OperationsGenerateRoutesForBankService {
                     "ROUTING_RULES_GENERATED_FOR_BANK",
                     ENTITY_TYPE,
                     bankCode,
-                    ACTOR,
+                    AuditActorUtil.currentActor(),
                     payload
             );
         } catch (Exception ignored) {

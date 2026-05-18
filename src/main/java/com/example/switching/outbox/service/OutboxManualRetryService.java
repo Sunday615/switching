@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.switching.audit.service.AuditLogService;
+import com.example.switching.common.util.AuditActorUtil;
 import com.example.switching.outbox.dto.OutboxManualRetryResponse;
 import com.example.switching.outbox.entity.OutboxEventEntity;
 import com.example.switching.outbox.enums.OutboxStatus;
@@ -18,7 +19,6 @@ import com.example.switching.outbox.repository.OutboxEventRepository;
 public class OutboxManualRetryService {
 
     private static final String ENTITY_TYPE = "TRANSFER";
-    private static final String SOURCE_SYSTEM = "API";
 
     private final OutboxEventRepository outboxEventRepository;
     private final AuditLogService auditLogService;
@@ -74,7 +74,7 @@ public class OutboxManualRetryService {
                 "OUTBOX_MANUAL_RETRY_REQUESTED",
                 ENTITY_TYPE,
                 event.getTransferRef(),
-                SOURCE_SYSTEM,
+                AuditActorUtil.currentActor(),
                 payload
         );
 

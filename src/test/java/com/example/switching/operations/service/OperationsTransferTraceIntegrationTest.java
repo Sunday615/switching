@@ -88,6 +88,8 @@ class OperationsTransferTraceIntegrationTest extends AbstractIntegrationTest {
         assertEquals(transferRef, root.path("transfer").path("transferRef").asText());
         assertEquals("BANK_A", root.path("transfer").path("sourceBank").asText());
         assertEquals("BANK_B", root.path("transfer").path("destinationBank").asText());
+        assertEquals("********0001", root.path("transfer").path("debtorAccount").asText());
+        assertEquals("********0001", root.path("transfer").path("creditorAccount").asText());
         assertEquals(
                 "/api/operations/transfers/" + transferRef + "/trace",
                 root.path("transfer").path("operationTraceApiPath").asText()
@@ -95,6 +97,7 @@ class OperationsTransferTraceIntegrationTest extends AbstractIntegrationTest {
 
         assertEquals(inquiryRef, root.path("inquiry").path("inquiryRef").asText());
         assertEquals("USED", root.path("inquiry").path("status").asText());
+        assertEquals("********0001", root.path("inquiry").path("creditorAccount").asText());
 
         assertTrue(root.path("timeline").isArray(), "Expected timeline array. Body: " + body);
         assertFalse(root.path("timeline").isEmpty(), "Expected non-empty timeline. Body: " + body);

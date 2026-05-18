@@ -14,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.example.switching.common.util.MaskingUtil;
 import com.example.switching.operations.dto.OperationsTransferTraceAuditItemResponse;
 import com.example.switching.operations.dto.OperationsTransferTraceInquiryResponse;
 import com.example.switching.operations.dto.OperationsTransferTraceIsoMessageItemResponse;
@@ -174,9 +175,9 @@ public class OperationsTransferTraceService {
                 clean(rs.getString("client_transfer_id")),
                 inquiryRef,
                 clean(rs.getString("source_bank_code")),
-                clean(rs.getString("source_account_no")),
+                MaskingUtil.maskAccount(clean(rs.getString("source_account_no"))),
                 clean(rs.getString("destination_bank_code")),
-                clean(rs.getString("destination_account_no")),
+                MaskingUtil.maskAccount(clean(rs.getString("destination_account_no"))),
                 clean(rs.getString("destination_account_name")),
                 rs.getBigDecimal("amount"),
                 clean(rs.getString("currency")),
@@ -346,8 +347,8 @@ public class OperationsTransferTraceService {
                 clean(rs.getString("end_to_end_id")),
                 clean(rs.getString("source_bank_code")),
                 clean(rs.getString("destination_bank_code")),
-                clean(rs.getString("debtor_account_no")),
-                clean(rs.getString("creditor_account_no")),
+                MaskingUtil.maskAccount(clean(rs.getString("debtor_account_no"))),
+                MaskingUtil.maskAccount(clean(rs.getString("creditor_account_no"))),
                 rs.getBigDecimal("amount"),
                 clean(rs.getString("currency")),
                 clean(rs.getString("reference")),
@@ -381,7 +382,7 @@ public class OperationsTransferTraceService {
                 clean(rs.getString("source_bank")),
                 clean(rs.getString("destination_bank")),
                 null,   // debtorAccount  — ISO-only
-                clean(rs.getString("creditor_account")),
+                MaskingUtil.maskAccount(clean(rs.getString("creditor_account"))),
                 rs.getBigDecimal("amount"),
                 clean(rs.getString("currency")),
                 clean(rs.getString("reference")),
@@ -559,7 +560,7 @@ public class OperationsTransferTraceService {
                         clean(rs.getString("reference_type")),
                         clean(rs.getString("reference_id")),
                         clean(rs.getString("actor")),
-                        clean(rs.getString("payload")),
+                        MaskingUtil.maskAccountFieldsInText(clean(rs.getString("payload"))),
                         toLocalDateTime(rs.getTimestamp("created_at"))
                 ),
                 params.toArray()
@@ -592,7 +593,7 @@ public class OperationsTransferTraceService {
                     inquiry.inquiryRef(),
                     inquiryCreatedLabel,
                     "Inquiry status=" + inquiry.status()
-                            + ", creditorAccount=" + inquiry.creditorAccount()
+                            + ", creditorAccount=" + MaskingUtil.maskAccount(inquiry.creditorAccount())
             ));
 
             if (StringUtils.hasText(inquiry.usedByTransferRef())) {

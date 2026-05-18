@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.example.switching.common.util.MaskingUtil;
 import com.example.switching.operations.dto.OperationsIsoInquiryItemResponse;
 import com.example.switching.operations.dto.OperationsIsoInquiryListResponse;
 
@@ -290,9 +291,9 @@ public class OperationsIsoInquiryQueryService {
                 /*
                  * Current ISO ACMT.023 profile verifies creditor/destination account only.
                  * Keep debtorAccount null in the API response to avoid exposing old dirty rows.
-                 */
+                */
                 null,
-                clean(rs.getString("creditor_account_no")),
+                MaskingUtil.maskAccount(clean(rs.getString("creditor_account_no"))),
 
                 rs.getBigDecimal("amount"),
                 clean(rs.getString("currency")),

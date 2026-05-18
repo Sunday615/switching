@@ -52,6 +52,16 @@ switching:
     message-crypto-key-base64: ${MESSAGE_CRYPTO_KEY_BASE64:}
     api-key:
       enabled: ${API_KEY_AUTH_ENABLED:true}
+    oauth:
+      enabled: ${SECURITY_OAUTH_ENABLED:false}
+      jwt-secret: ${OAUTH_JWT_SECRET:dev-test-oauth-secret-change-me-32-bytes}
+      token-ttl-seconds: ${OAUTH_TOKEN_TTL_SECONDS:3600}
+    mtls:
+      enabled: ${SECURITY_MTLS_ENABLED:false}
+      cert-header: ${MTLS_CERT_HEADER:X-Client-Cert}
+    signing:
+      enabled: ${SECURITY_SIGNING_ENABLED:false}
+      timestamp-tolerance-seconds: ${SIGNING_TIMESTAMP_TOLERANCE:30}
     rate-limit:
       enabled: ${RATE_LIMIT_ENABLED:true}
       requests-per-minute: ${RATE_LIMIT_RPM:100}

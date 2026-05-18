@@ -299,6 +299,33 @@ public enum ErrorCatalog {
                         ErrorPhase.VALIDATE_REQUEST,
                         false,
                         "Participant already exists for this bank code"),
+        LFP_2001(
+                        HttpStatus.UNAUTHORIZED,
+                        "UNAUTHORIZED",
+                        "LFP-2001",
+                        ErrorCategory.REQUEST,
+                        ErrorLayer.API,
+                        ErrorPhase.RECEIVE_REQUEST,
+                        false,
+                        "Invalid OAuth token"),
+        LFP_2002(
+                        HttpStatus.UNAUTHORIZED,
+                        "UNAUTHORIZED",
+                        "LFP-2002",
+                        ErrorCategory.REQUEST,
+                        ErrorLayer.API,
+                        ErrorPhase.RECEIVE_REQUEST,
+                        false,
+                        "Invalid mTLS client certificate"),
+        LFP_2003(
+                        HttpStatus.UNAUTHORIZED,
+                        "UNAUTHORIZED",
+                        "LFP-2003",
+                        ErrorCategory.REQUEST,
+                        ErrorLayer.API,
+                        ErrorPhase.RECEIVE_REQUEST,
+                        false,
+                        "Request signature invalid"),
 
         SYS_001(
                         HttpStatus.INTERNAL_SERVER_ERROR,

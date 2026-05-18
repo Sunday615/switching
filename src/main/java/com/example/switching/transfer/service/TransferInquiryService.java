@@ -7,6 +7,7 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 
 import com.example.switching.audit.service.AuditLogService;
+import com.example.switching.common.util.MaskingUtil;
 import com.example.switching.transfer.dto.TransferInquiryResponse;
 import com.example.switching.transfer.dto.TransferStatusHistoryItemResponse;
 import com.example.switching.transfer.entity.TransferEntity;
@@ -62,8 +63,8 @@ public class TransferInquiryService {
             auditPayload.put("currentStatus", response.getCurrentStatus());
             auditPayload.put("sourceBank", response.getSourceBank());
             auditPayload.put("destinationBank", response.getDestinationBank());
-            auditPayload.put("debtorAccount", response.getDebtorAccount());
-            auditPayload.put("creditorAccount", response.getCreditorAccount());
+            auditPayload.put("debtorAccount", MaskingUtil.maskAccount(response.getDebtorAccount()));
+            auditPayload.put("creditorAccount", MaskingUtil.maskAccount(response.getCreditorAccount()));
             auditPayload.put("amount", response.getAmount());
             auditPayload.put("currency", response.getCurrency());
             auditPayload.put("inquiryRef", response.getInquiryRef());

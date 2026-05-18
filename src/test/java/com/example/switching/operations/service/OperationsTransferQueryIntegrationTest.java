@@ -86,8 +86,8 @@ class OperationsTransferQueryIntegrationTest extends AbstractIntegrationTest {
         assertEquals("SUCCESS", firstItem.path("currentStatus").asText());
         assertEquals("BANK_A", firstItem.path("sourceBank").asText());
         assertEquals("BANK_B", firstItem.path("destinationBank").asText());
-        assertEquals("010100000001", firstItem.path("debtorAccount").asText());
-        assertEquals("020200000001", firstItem.path("creditorAccount").asText());
+        assertEquals("********0001", firstItem.path("debtorAccount").asText());
+        assertEquals("********0001", firstItem.path("creditorAccount").asText());
         assertEquals("ISO20022_XML", firstItem.path("channelId").asText());
         assertEquals("ROUTE_BANK_A_TO_BANK_B_PACS008", firstItem.path("routeCode").asText());
         assertEquals("MOCK_BANK_B_CONNECTOR", firstItem.path("connectorName").asText());
@@ -217,7 +217,7 @@ class OperationsTransferQueryIntegrationTest extends AbstractIntegrationTest {
         for (JsonNode item : items) {
             if (transferRef.equals(item.path("transferRef").asText())) {
                 found = true;
-                assertEquals("020200000009", item.path("creditorAccount").asText());
+                assertEquals("********0009", item.path("creditorAccount").asText());
                 assertEquals("MOCK_BANK_B_CONNECTOR", item.path("connectorName").asText());
             }
         }

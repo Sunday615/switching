@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.example.switching.audit.service.AuditLogService;
+import com.example.switching.common.util.AuditActorUtil;
 import com.example.switching.operations.dto.OperationsOutboxMarkReviewedRequest;
 import com.example.switching.operations.dto.OperationsOutboxMarkReviewedResponse;
 
@@ -18,7 +19,6 @@ import com.example.switching.operations.dto.OperationsOutboxMarkReviewedResponse
 public class OperationsOutboxMarkReviewedService {
 
     private static final String ENTITY_TYPE = "TRANSFER";
-    private static final String ACTOR = "API";
 
     private final JdbcTemplate jdbcTemplate;
     private final AuditLogService auditLogService;
@@ -147,7 +147,7 @@ public class OperationsOutboxMarkReviewedService {
                     "OUTBOX_EVENT_MARKED_REVIEWED",
                     ENTITY_TYPE,
                     row.transferRef(),
-                    ACTOR,
+                    AuditActorUtil.currentActor(),
                     payload
             );
         } catch (Exception ignored) {

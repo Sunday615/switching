@@ -4,10 +4,16 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+
+import com.example.switching.common.util.MaskingUtil;
 
 @Service
 public class IsoPacs008InboundService {
+
+    private static final Logger log = LoggerFactory.getLogger(IsoPacs008InboundService.class);
 
     private final Pacs008InboundParser parser;
     private final Pacs002XmlResponseBuilder responseBuilder;
@@ -24,6 +30,11 @@ public class IsoPacs008InboundService {
     }
 
     public String handleInboundPacs008(String xmlBody, String bankCodeHeader) {
+        log.debug("PACS.008 received from bankCode={}", bankCodeHeader);
+        if (log.isDebugEnabled()) {
+            log.debug("PACS.008 payload (accounts masked): {}", MaskingUtil.maskXmlAccounts(xmlBody));
+        }
+
         if (isBlank(xmlBody)) {
             return responseBuilder.rejectedWithoutOriginalMessage(
                     "FF01",

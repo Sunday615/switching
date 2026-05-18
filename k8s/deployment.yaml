@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: switching-api
+  namespace: switching
+  labels:
+    app: switching-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: switching-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: switching-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      terminationGracePeriodSeconds: 60
+
+      # ── Flyway migration runs before app pods start ──────────────────────
+      initContainers:
+        - name: flyway-migrate
+          image: switching-api:latest
+          command: ["java", "-cp", "app.jar",
+                    "-Dspring.profiles.active=prod",
+                    "-Dspring.datasource.url=$(DB_URL)",
+                    "-Dspring.datasource.username=$(FLYWAY_USERNAME)",
+                    "-Dspring.datasource.password=$(FLYWAY_PASSWORD)",
+                    "org.springframework.boot.loader.launch.JarLauncher",
+                    "--spring.flyway.enabled=true",
+                    "--spring.jpa.hibernate.ddl-auto=none"]
+          envFrom:
+            - configMapRef:
+                name: switching-config
+            - secretRef:
+                name: switching-secrets
+
+      containers:
+        - name: switching-api
+          image: switching-api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: management
+              containerPort: 9090
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: switching-config
+            - secretRef:
+                name: switching-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          # ── Liveness: restart pod if app is deadlocked ───────────────────
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
+            timeoutSeconds: 5
+          # ── Readiness: only send traffic when DB + app are ready ─────────
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: management
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+          # ── Startup: give extra time on cold start (Flyway + JVM warmup) ─
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 24    # 20 + 24*5 = 2 min max startup time
+            timeoutSeconds: 5

@@ -76,7 +76,7 @@ class OperationsIsoInquiryQueryIntegrationTest extends AbstractIntegrationTest {
         assertEquals(messageId, firstItem.path("messageId").asText());
         assertEquals("ELIGIBLE", firstItem.path("status").asText());
         assertTrue(firstItem.path("debtorAccount").isNull());
-        assertEquals("020200000001", firstItem.path("creditorAccount").asText());
+        assertEquals("********0001", firstItem.path("creditorAccount").asText());
         assertEquals("/api/iso-inquiries/" + inquiryRef, firstItem.path("inquiryApiPath").asText());
         assertTrue(firstItem.path("transferApiPath").isNull());
     }

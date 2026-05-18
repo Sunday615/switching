@@ -6,15 +6,21 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.example.switching.audit.service.AuditLogService;
+import com.example.switching.common.util.MaskingUtil;
 
 @Service
 public class IsoInquiryInboundService {
+
+    private static final Logger log = LoggerFactory.getLogger(IsoInquiryInboundService.class);
 
     private static final String ISO_CHANNEL_ID = "ISO20022_XML";
     private static final int INQUIRY_TTL_MINUTES = 15;
@@ -38,6 +44,11 @@ public class IsoInquiryInboundService {
 
     @Transactional
     public String handle(String xBankCode, String xmlBody) {
+        log.debug("ACMT.023 received from bankCode={}", xBankCode);
+        if (log.isDebugEnabled()) {
+            log.debug("ACMT.023 payload (accounts masked): {}", MaskingUtil.maskXmlAccounts(xmlBody));
+        }
+
         Acmt023InquiryRequest request;
 
         try {
@@ -84,58 +95,78 @@ public class IsoInquiryInboundService {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiresAt = now.plusMinutes(INQUIRY_TTL_MINUTES);
 
-        jdbcTemplate.update(
-                """
-                INSERT INTO iso_inquiries (
-                    inquiry_ref,
-                    channel_id,
-                    message_id,
-                    instruction_id,
-                    end_to_end_id,
-                    source_bank_code,
-                    destination_bank_code,
-                    debtor_account_no,
-                    creditor_account_no,
-                    amount,
-                    currency,
-                    reference,
-                    status,
-                    account_found,
-                    bank_available,
-                    eligible_for_transfer,
-                    failure_code,
-                    failure_message,
-                    expires_at,
-                    used_by_transfer_ref,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                inquiryRef,
-                ISO_CHANNEL_ID,
-                request.getMessageId(),
-                request.getInstructionId(),
-                request.getEndToEndId(),
-                request.getSourceBank(),
-                request.getDestinationBank(),
-                null,
-                clean(request.getCreditorAccount()),
-                request.getAmount(),
-                clean(request.getCurrency()),
-                clean(request.getReference()),
-                "ELIGIBLE",
-                true,
-                true,
-                true,
-                null,
-                null,
-                expiresAt,
-                null,
-                now,
-                now
-        );
+        try {
+            jdbcTemplate.update(
+                    """
+                    INSERT INTO iso_inquiries (
+                        inquiry_ref,
+                        channel_id,
+                        message_id,
+                        instruction_id,
+                        end_to_end_id,
+                        source_bank_code,
+                        destination_bank_code,
+                        debtor_account_no,
+                        creditor_account_no,
+                        amount,
+                        currency,
+                        reference,
+                        status,
+                        account_found,
+                        bank_available,
+                        eligible_for_transfer,
+                        failure_code,
+                        failure_message,
+                        expires_at,
+                        used_by_transfer_ref,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    inquiryRef,
+                    ISO_CHANNEL_ID,
+                    request.getMessageId(),
+                    request.getInstructionId(),
+                    request.getEndToEndId(),
+                    request.getSourceBank(),
+                    request.getDestinationBank(),
+                    null,
+                    clean(request.getCreditorAccount()),
+                    request.getAmount(),
+                    clean(request.getCurrency()),
+                    clean(request.getReference()),
+                    "ELIGIBLE",
+                    true,
+                    true,
+                    true,
+                    null,
+                    null,
+                    expiresAt,
+                    null,
+                    now,
+                    now
+            );
+        } catch (DataIntegrityViolationException ex) {
+            /*
+             * Concurrent race: another thread inserted the same (channel_id, message_id)
+             * first and won the uq_iso_inquiries_channel_message constraint.
+             *
+             * LOCK IN SHARE MODE bypasses the REPEATABLE READ snapshot so we see the
+             * winner's committed row even though their transaction committed after ours
+             * started.
+             */
+            String winnerRef = findCurrentInquiryRef(request.getMessageId());
+            if (StringUtils.hasText(winnerRef)) {
+                log.debug("Concurrent ACMT.023 race resolved: messageId={} existingRef={}",
+                        request.getMessageId(), winnerRef);
+                auditAcmt024ResponseCreated(request, winnerRef, "MTCH", "EXISTING");
+                return responseBuilder.accepted(request, winnerRef);
+            }
+            throw ex;
+        }
 
+        writeStatusHistory(inquiryRef, "ELIGIBLE", null, now);
         auditInquiryCreated(request, inquiryRef, "ELIGIBLE", true, expiresAt, null, null);
 
         String responseXml = responseBuilder.accepted(request, inquiryRef);
@@ -200,6 +231,7 @@ public class IsoInquiryInboundService {
                 now
         );
 
+        writeStatusHistory(inquiryRef, "REJECTED", code, now);
         auditInquiryCreated(request, inquiryRef, "REJECTED", false, expiresAt, code, message);
 
         String responseXml = responseBuilder.rejected(request, code, message);
@@ -236,12 +268,33 @@ public class IsoInquiryInboundService {
                 ORDER BY id DESC
                 LIMIT 1
                 """,
-                rs -> {
-                    if (!rs.next()) {
-                        return null;
-                    }
-                    return rs.getString("inquiry_ref");
-                },
+                rs -> rs.next() ? rs.getString("inquiry_ref") : null,
+                ISO_CHANNEL_ID,
+                messageId.trim()
+        );
+    }
+
+    /**
+     * Reads the committed inquiry_ref for a given messageId using a locking read.
+     *
+     * LOCK IN SHARE MODE bypasses the REPEATABLE READ snapshot so the race-losing
+     * thread can see the winner's row even if that row was committed after the loser's
+     * transaction started.  Used only in the concurrent-INSERT catch block.
+     */
+    private String findCurrentInquiryRef(String messageId) {
+        if (!StringUtils.hasText(messageId)) {
+            return null;
+        }
+
+        return jdbcTemplate.query(
+                """
+                SELECT inquiry_ref
+                FROM iso_inquiries
+                WHERE channel_id = ?
+                  AND message_id = ?
+                LOCK IN SHARE MODE
+                """,
+                rs -> rs.next() ? rs.getString("inquiry_ref") : null,
                 ISO_CHANNEL_ID,
                 messageId.trim()
         );
@@ -256,7 +309,7 @@ public class IsoInquiryInboundService {
         payload.put("sourceBank", request.getSourceBank());
         payload.put("destinationBank", request.getDestinationBank());
         payload.put("debtorAccount", null);
-        payload.put("creditorAccount", clean(request.getCreditorAccount()));
+        payload.put("creditorAccount", MaskingUtil.maskAccount(clean(request.getCreditorAccount())));
         payload.put("amount", request.getAmount());
         payload.put("currency", clean(request.getCurrency()));
         payload.put("reference", clean(request.getReference()));
@@ -287,7 +340,7 @@ public class IsoInquiryInboundService {
         payload.put("sourceBank", request.getSourceBank());
         payload.put("destinationBank", request.getDestinationBank());
         payload.put("debtorAccount", null);
-        payload.put("creditorAccount", clean(request.getCreditorAccount()));
+        payload.put("creditorAccount", MaskingUtil.maskAccount(clean(request.getCreditorAccount())));
         payload.put("amount", request.getAmount());
         payload.put("currency", clean(request.getCurrency()));
         payload.put("status", status);
@@ -341,6 +394,21 @@ public class IsoInquiryInboundService {
                 .toUpperCase();
 
         return "INQ-" + timestamp + "-" + randomSuffix;
+    }
+
+    /**
+     * Writes a status transition row to {@code inquiry_status_history} for the ISO path.
+     * The table has no FK to {@code inquiries}, so ISO inquiry refs (prefixed "INQ-") are
+     * accepted safely.  This gives a unified history view across both JSON and ISO paths.
+     */
+    private void writeStatusHistory(String inquiryRef, String status, String reasonCode, LocalDateTime now) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO inquiry_status_history (inquiry_ref, status, reason_code, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                inquiryRef, status, reasonCode, now
+        );
     }
 
     private String clean(String value) {

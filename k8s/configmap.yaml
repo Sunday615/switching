@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: switching-config
+  namespace: switching
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  SERVER_PORT: "8080"
+  MANAGEMENT_PORT: "9090"
+  OUTBOX_POLL_INTERVAL_MS: "30000"
+  OUTBOX_RECOVERY_INTERVAL_MS: "60000"
+  OUTBOX_BATCH_SIZE: "20"
+  OUTBOX_MAX_RETRY: "3"
+  OUTBOX_STUCK_TIMEOUT_MINUTES: "2"
+  RATE_LIMIT_RPM: "60"
+  JSON_INITIATION_ENABLED: "false"

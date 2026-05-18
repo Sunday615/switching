@@ -43,7 +43,7 @@ jobs:
       - name: Run unit tests
         run: |
           ./mvnw test \
-            -Dtest="ParticipantManagementServiceTest,RoutingRuleManagementServiceTest,ConnectorConfigManagementServiceTest" \
+            -Dtest="ParticipantManagementServiceTest,RoutingRuleManagementServiceTest,ConnectorConfigManagementServiceTest,OutboxWorkerShutdownTest" \
             -Dsurefire.failIfNoSpecifiedTests=false
 
       - name: Upload unit test report
@@ -71,7 +71,7 @@ jobs:
       - name: Run integration tests
         run: |
           ./mvnw test \
-            -Dtest="SwitchingApplicationTests,FullTransferFlowIntegrationTest,IsoInquiryFlowIntegrationTest,IsoInquiryValidationIntegrationTest,IsoInquiryExpiryIntegrationTest,OperationsTransferTraceIntegrationTest,OperationsTransferQueryIntegrationTest,OperationsIsoInquiryQueryIntegrationTest" \
+            -Dtest="SwitchingApplicationTests,FullTransferFlowIntegrationTest,IsoInquiryFlowIntegrationTest,IsoInquiryValidationIntegrationTest,IsoInquiryExpiryIntegrationTest,OperationsTransferTraceIntegrationTest,OperationsTransferQueryIntegrationTest,OperationsIsoInquiryQueryIntegrationTest,ApiKeyRotationIntegrationTest,IsoInquiryStatusHistoryIntegrationTest,IdempotencyIntegrationTest" \
             -Dsurefire.failIfNoSpecifiedTests=false
         env:
           # Testcontainers starts its own MySQL — no env vars needed for DB
@@ -130,11 +130,46 @@ jobs:
       - name: Save image digest
         run: docker images switching-api:${{ github.sha }}
 
-  # ── Job 6: Push to Registry (main branch only) ────────────────────────────────
+  # ── Job 6: Trivy Security Scan ───────────────────────────────────────────────
+  trivy-scan:
+    name: Trivy Security Scan
+    runs-on: ubuntu-latest
+    needs: docker-build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: target/
+
+      - name: Rebuild Docker image for scanning
+        run: docker build -t switching-api:scan .
+
+      - name: Run Trivy image scan (HIGH + CRITICAL, ignore unfixed)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: switching-api:scan
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Upload Trivy SARIF report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-scan-report
+          path: trivy-results.sarif
+          retention-days: 30
+
+  # ── Job 7: Push to Registry (main branch only) ────────────────────────────────
   docker-push:
     name: Push to Registry
     runs-on: ubuntu-latest
-    needs: docker-build
+    needs: [ docker-build, trivy-scan ]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
